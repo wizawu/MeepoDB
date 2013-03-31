@@ -23,6 +23,15 @@
 package meepodb
 
 const (
+/*
+    | CMD_CODE       : 7  bits               |  ========
+    | TABLE_NAME_LEN : 7  bits               |    Head
+    | KEY_LEN        : 20 bits               |   64 bits
+    | VALUE_LEN      : 30 bits               |  ========
+    | TABLE_NAME     : $TABLE_NAME_LEN bytes |
+    | KEY            : $KEY_LEN        bytes |
+    | VALUE          : $VALUE_LEN      bytes |
+*/
     CMD_CODE_BITS   = 7
     TABLE_NAME_BITS = 7
     KEY_BITS        = 20
@@ -52,6 +61,11 @@ const (
     MSET_CODE byte = 0x12
     MDEL_CODE byte = 0x13
 )
+
+/* Check whether a command is 'MXXX'. */
+func MoreCmd(code byte) bool {
+    return (code & byte(0x10) > 0)
+}
 
 func EncodeHead(code byte, tlen, klen, vlen uint64) []byte {
     var x uint64 = uint64(code)
