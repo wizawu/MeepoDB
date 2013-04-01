@@ -36,6 +36,22 @@ type Block struct {
     path    string
 }
 
+type BlockSlice []Block
+
+func (blocks BlockSlice) Len() {
+    return len(Block)
+}
+
+func (blocks BlockSlice) Less(i, j int) bool {
+    return bytesCompare(blocks[i].key, blocks[j].key) < 0
+}
+
+func (blocks BlockSlice) Swap(i, j int) {
+    temp := blocks[i]
+    blocks[i] = blocks[j]
+    blocks[j] = temp
+}
+
 func (block *Block) Free() bool {
     return Munmap(block.raw) == nil && Unlink(block.path) == nil
 }
@@ -48,7 +64,7 @@ func OpenBlock(dir string, number uint8) (*Block, bool) {
         return block, false
     }
 
-    /* Decode block head. */
+    /* Decode block head */
     buffer := make([]byte, 8)
     n, err := Read(fd, buffer[:2])
     if err != nil || n != 2 {
@@ -73,7 +89,7 @@ func OpenBlock(dir string, number uint8) (*Block, bool) {
         vlen = int(buffer[1])
     }
 
-    /* New a Block struct. */
+    /* Block struct */
     var length int = hlen + klen + vlen
     raw, err := Mmap(fd, 0, length, PROT_READ, MAP_PRIVATE)
     Close(fd)
@@ -96,7 +112,7 @@ func UpdateBlock(dir string, number uint8, key []byte, value []byte) (*Block, bo
         return block, false
     }
 
-    /* Create a file. */
+    /* Open file */
     var path string = pathname(dir, true, int(number))
     var mode int = O_RDWR | O_CREAT | O_TRUNC
     var S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
@@ -106,8 +122,7 @@ func UpdateBlock(dir string, number uint8, key []byte, value []byte) (*Block, bo
         return block, false
     }
 
-    /* Write block head, key and value to file.
-       Block format:
+    /* Block format:
        | head | key | value |
     */
     klen, vlen := len(key), len(value)
@@ -125,7 +140,7 @@ func UpdateBlock(dir string, number uint8, key []byte, value []byte) (*Block, bo
         return block, false
     }
 
-    /* New a Block struct with mmap. */
+    /* Block struct */
     hlen := len(head)
     length := hlen + klen + vlen
     raw, err := Mmap(fd, 0, length, PROT_READ, MAP_PRIVATE)

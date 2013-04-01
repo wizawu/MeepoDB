@@ -72,12 +72,7 @@ func EncodeHead(code byte, tlen, klen, vlen uint64) []byte {
     x = (x << TABLE_NAME_BITS) | tlen
     x = (x << KEY_BITS       ) | klen
     x = (x << VALUE_BITS     ) | vlen
-    var head [8]byte
-    for i := range head {
-        k := uint64(56 - 8 * i)
-        head[i] = byte(x >> k)
-    }
-    return head[:]
+    return uint64ToBytes(x)
 }
 
 func DecodeHead(head []byte) (byte, uint64, uint64, uint64) {
