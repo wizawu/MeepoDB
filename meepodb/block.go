@@ -58,7 +58,7 @@ func (block *Block) Free() bool {
 
 func OpenBlock(dir string, number uint8) (*Block, bool) {
     block := new(Block)
-    var path string = pathname(dir, true, int(number))
+    var path string = pathname(dir, int(number))
     fd, err := Open(path, O_RDONLY, S_IREAD)
     if err != nil {
         return block, false
@@ -66,13 +66,13 @@ func OpenBlock(dir string, number uint8) (*Block, bool) {
 
     /* Decode block head */
     buffer := make([]byte, 8)
-    n, err := Read(fd, buffer[:2])
+    n, err := Read(fd, buffer[0 : 2])
     if err != nil || n != 2 {
         return block, false
     }
     var hlen, klen, vlen int
     if buffer[0] == 255 {
-        n, err = Read(fd, buffer[2:8])
+        n, err = Read(fd, buffer[2 : 8])
         if err != nil || n != 6 {
             return block, false
         }
@@ -99,8 +99,8 @@ func OpenBlock(dir string, number uint8) (*Block, bool) {
     *block = Block {
         number : number,
         raw    : raw,
-        key    : raw[hlen : hlen+klen],
-        value  : raw[hlen+klen : length],
+        key    : raw[hlen : hlen + klen],
+        value  : raw[hlen + klen : length],
         path   : path,
     }
     return block, true
@@ -113,7 +113,7 @@ func UpdateBlock(dir string, number uint8, key []byte, value []byte) (*Block, bo
     }
 
     /* Open file */
-    var path string = pathname(dir, true, int(number))
+    var path string = pathname(dir, int(number))
     var mode int = O_RDWR | O_CREAT | O_TRUNC
     var S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
     var S_IWALL uint32 = S_IWUSR | S_IWGRP | S_IWOTH
@@ -151,21 +151,21 @@ func UpdateBlock(dir string, number uint8, key []byte, value []byte) (*Block, bo
     *block = Block {
         number : number,
         raw    : raw,
-        key    : raw[hlen : hlen+klen],
-        value  : raw[hlen+klen : length],
+        key    : raw[hlen : hlen + klen],
+        value  : raw[hlen + klen : length],
         path   : path,
     }
     return block, true
 }
 
-func pathname(dir string, blk bool, number int) string {
+func pathname(dir string, number int) string {
     var suffix string
     if number & 1 == 1 {
         suffix = strconv.Itoa(number >> 1) + ".1"
     } else {
         suffix = strconv.Itoa(number >> 1) + ".0"
     }
-    if blk {
+    if (number >> 1) < 64 {
         return dir + "/blk_" + suffix
     }
     return dir + "/ext_" + suffix

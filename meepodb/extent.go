@@ -42,7 +42,7 @@ type Extent struct {
 }
 
 func (extent *Extent) Index(i uint64) (uint64, uint64) {
-    var entry  uint64 = bytesToUint64(extent.index[i*8 : i*8+8])
+    var entry  uint64 = bytesToUint64(extent.index[i * 8 : i * 8 + 8])
     var offset uint64 = entry >> KEY_BITS
     var klen   uint64 = entry & MAX_KEY_LEN
     return offset, klen
@@ -50,7 +50,7 @@ func (extent *Extent) Index(i uint64) (uint64, uint64) {
 
 func (extent *Extent) Key(i uint64) []byte {
     offset, klen := extent.Index(i)
-    return extent.raw[offset : offset+klen]
+    return extent.raw[offset : offset + klen]
 }
 
 func (extent *Extent) Record(i uint64) ([]byte, []byte) {
@@ -61,7 +61,8 @@ func (extent *Extent) Record(i uint64) ([]byte, []byte) {
     } else {
         end, _ = extent.Index(i + 1)
     }
-    return extent.raw[offset : offset+klen], extent.raw[offset+klen : end]
+    return extent.raw[offset : offset + klen],
+           extent.raw[offset + klen : end]
 }
 
 /* Binary search */
@@ -90,7 +91,7 @@ func (extent *Extent) Free() bool {
 
 func OpenExtent(dir string, number uint64) (*Extent, bool) {
     extent := new(Extent)
-    var path string = pathname(dir, false, number)
+    var path string = pathname(dir, number)
     fd, err := Open(path, O_RDONLY, S_IREAD)
     if err != nil {
         return extent, false
@@ -102,8 +103,8 @@ func OpenExtent(dir string, number uint64) (*Extent, bool) {
     if err != nil || n != 16 {
         return extent, false
     }
-    var size  uint64 = bytesToUint64(buffer[0:8])
-    var total uint64 = bytesToUint64(buffer[8:16])
+    var size  uint64 = bytesToUint64(buffer[0 : 8])
+    var total uint64 = bytesToUint64(buffer[8 : 16])
 
     /* Extent struct */
     raw, err := Mmap(fd, 0, size, PROT_READ, MAP_PRIVATE)
@@ -111,7 +112,7 @@ func OpenExtent(dir string, number uint64) (*Extent, bool) {
     if err != nil {
         return extent, false
     }
-    var index []byte = raw[16 : 16+8*total]
+    var index []byte = raw[16 : 16 + 8 * total]
     *extent = Extent {
         number  : number,
         raw     : raw,
@@ -128,7 +129,7 @@ func BlocksToExtent(dir string, number uint64, blocks BlockSlice) (*Extent, bool
     extent := new(Extent)
 
     /* Open file */
-    var path string = pathname(dir, false, int(number))
+    var path string = pathname(dir, int(number))
     var mode int = O_RDWR | O_CREAT | O_TRUNC
     var S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
     var S_IWALL uint32 = S_IWUSR | S_IWGRP | S_IWOTH
@@ -190,18 +191,121 @@ func BlocksToExtent(dir string, number uint64, blocks BlockSlice) (*Extent, bool
         raw     : raw,
         size    : size,
         total   : total,
-        index   : raw[16 : 16+8*total],
+        index   : raw[16 : 16 + 8 * total],
         path    : path,
     }
     return extent, true
 }
 
-func MergeExtents(dir string, number uint64, ext0, ext1 *Extent) (*Extent, bool) {
+func MergeExtents(dir string, number uint64, ext [2]*Extent) (*Extent, bool) {
+    extent := new(Extent)
+    /* Open file */
+    var path string = pathname(dir, int(number))
+    var mode int = O_RDWR | O_CREAT | O_TRUNC
+    var S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
+    var S_IWALL uint32 = S_IWUSR | S_IWGRP | S_IWOTH
+    fd, err := Open(path, mode, S_IRALL | S_IWALL)
+    if err != nil {
+        return extent, false
+    }
+
+    /* Get total and entries */
+    var total    uint64
+    var size     uint64 = 16
+    var entries  [number >> 1]uint64
+    var flags    [number >> 1]int
+    var k, v     []byte
+    var iter     [2]uint64
+    len_ := [2]uint64{ ext[0].total, ext[1].total }
+    for iter[0] < len_[0] && iter[1] < len_[1] {
+        flag := bytesCompare(ext[0].Key(iter[0]), ext[1].Key(iter[1]))
+        if flag == 0 {
+            k, v = ext[1].Record(iter[1])
+            iter[0], iter[1] = iter[0] + 1, iter[1] + 1
+        } else if flag < 0 {
+            k, v := ext[0].Record(iter[0])
+            iter[0]++
+        } else {
+            k, v = ext[1].Record(iter[1])
+            iter[1]++
+        }
+        /* Here offset is not the eventual one because index length has not been
+           added to it. */
+        entries[total] = size << KEY_BITS + uint64(len(k))
+        flags[total] = flag
+        size += uint64(len(k) + len(v))
+        total++
+    }
+    for x := 0; x <= 1; x++ {
+        for ; iter[x] < len_[x]; iter[x]++ {
+            k, v = ext[x].Record(iter[x])
+            entries[total] = size << KEY_BITS + uint64(len(k))
+            /* If x = 0, flag < 0; x = 1, flag > 0. */
+            flags[total] = x * 2 - 1
+            size += uint64(len(k) + len(v))
+            total++
+        }
+    }
+    size += 8 * total
+    /* Write extent head */
+    n, err := Write(fd, uint64ToBytes(size))
+    if err != nil || n != 8 {
+        return extent, false
+    }
+    n, err = Write(fd, uint64ToBytes(total))
+    if err != nil || n != 8 {
+        return extent, false
+    }
+    /* Write index */
+    for i := uint64(0); i < total; i++ {
+        n, err = Write(fd, uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
+        if err != nil || n != 8 {
+            return extent, false
+        }
+    }
+    /* Write records */
+    iter[0], iter[1] = 0, 0
+    for i := uint64(0); i < total; i++ {
+        if flags[i] == 0 {
+            k, v = ext[1].Record(iter[1])
+            iter[0], iter[1] = iter[0] + 1, iter[1] + 1
+        }  else if flags[i] < 0 {
+            k, v = ext[0].Record(iter[0])
+            iter[0]++
+        } else {
+            k, v = ext[1].Record(iter[1])
+            iter[1]++
+        }
+        n, err = Write(fd, k)
+        if err != nil || n != len(k) {
+            return extent, false
+        }
+        n, err = Write(fd, v)
+        if err != nil || n != len(v) {
+            return extent, false
+        }
+    }
+
+    /* Extent struct */
+    raw, err := Mmap(fd, 0, size, PROT_READ, MAP_PRIVATE)
+    Close(fd)
+    if err != nil {
+        return extent, false
+    }
+    *extent = Extent {
+        number  : number,
+        raw     : raw,
+        size    : size,
+        total   : total,
+        index   : raw[16 : 16 + 8 * total],
+        path    : path,
+    }
+    return extent, true
 }
 
 func bytesToUint64(bytes []byte) uint64 {
     var x uint64
-    for _, b := range bytes[:8] {
+    for _, b := range bytes[0 : 8] {
         x = x << 8 + uint64(b)
     }
     return x
