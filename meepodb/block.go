@@ -28,7 +28,7 @@ import (
 )
 
 type Block struct {
-    /* E.g. number of blx_16.1 is (16 << 1 | 1) */
+    /* E.g. number of blk_16.1 is (16 << 1 | 1). */
     number  uint8
     raw     []byte
     key     []byte
@@ -42,7 +42,7 @@ func (block *Block) Free() bool {
 
 func OpenBlock(dir string, number uint8) (*Block, bool) {
     block := new(Block)
-    var path string = blockPath(dir, number)
+    var path string = pathname(dir, true, int(number))
     fd, err := Open(path, O_RDONLY, S_IREAD)
     if err != nil {
         return block, false
@@ -83,8 +83,8 @@ func OpenBlock(dir string, number uint8) (*Block, bool) {
     *block = Block {
         number : number,
         raw    : raw,
-        key    : raw[hlen : hlen + klen],
-        value  : raw[hlen + klen : length],
+        key    : raw[hlen : hlen+klen],
+        value  : raw[hlen+klen : length],
         path   : path,
     }
     return block, true
@@ -97,7 +97,7 @@ func UpdateBlock(dir string, number uint8, key []byte, value []byte) (*Block, bo
     }
 
     /* Create a file. */
-    var path string = blockPath(dir, number)
+    var path string = pathname(dir, true, int(number))
     var mode int = O_RDWR | O_CREAT | O_TRUNC
     var S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
     var S_IWALL uint32 = S_IWUSR | S_IWGRP | S_IWOTH
@@ -106,8 +106,12 @@ func UpdateBlock(dir string, number uint8, key []byte, value []byte) (*Block, bo
         return block, false
     }
 
-    /* Write block head, key and value. */
-    head := blockHead(len(key), len(value))
+    /* Write block head, key and value to file.
+       Block format:
+       | head | key | value |
+    */
+    klen, vlen := len(key), len(value)
+    head := blockHead(klen, vlen)
     _, err = Write(fd, head)
     if err != nil {
         return block, false
@@ -122,7 +126,8 @@ func UpdateBlock(dir string, number uint8, key []byte, value []byte) (*Block, bo
     }
 
     /* New a Block struct with mmap. */
-    length := len(head) + len(key) + len(value)
+    hlen := len(head)
+    length := hlen + klen + vlen
     raw, err := Mmap(fd, 0, length, PROT_READ, MAP_PRIVATE)
     Close(fd)
     if err != nil {
@@ -131,26 +136,38 @@ func UpdateBlock(dir string, number uint8, key []byte, value []byte) (*Block, bo
     *block = Block {
         number : number,
         raw    : raw,
-        key    : raw[len(head) : len(head) + len(key)],
-        value  : raw[len(head) + len(key) : length],
+        key    : raw[hlen : hlen+klen],
+        value  : raw[hlen+klen : length],
         path   : path,
     }
     return block, true
 }
 
-func blockPath(dir string, number uint8) string {
+func pathname(dir string, blk bool, number int) string {
     var suffix string
     if number & 1 == 1 {
-        suffix = strconv.Itoa(int(number >> 1)) + ".1"
+        suffix = strconv.Itoa(number >> 1) + ".1"
     } else {
-        suffix = strconv.Itoa(int(number >> 1)) + ".0"
+        suffix = strconv.Itoa(number >> 1) + ".0"
     }
-    return dir + "/blx_" + suffix
+    if blk {
+        return dir + "/blk_" + suffix
+    }
+    return dir + "/ext_" + suffix
 }
 
 func blockHead(klen, vlen int) []byte {
     var head []byte
-    /* Block head is either 2 bytes or 8 bytes. */
+    /* Block head is either 2 bytes or 8 bytes.
+       2-byte head format:
+       | key length | value length |
+       |------------|--------------|
+       |   8 bits   |    8 bits    |
+       8-byte head format:
+       | 1111 1111 | key length | value length |
+       |-----------|------------|--------------|
+       |   8 bits  |   24 bits  |    32 bits   |
+    */
     if klen < 255 && vlen < 255 {
         head = make([]byte, 2)
         head[0] = byte(klen)
