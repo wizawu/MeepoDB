@@ -20,8 +20,4 @@
  *  IN THE SOFTWARE.
  */
 
-package meepodb
-
-import (
-    . "syscall"
-)
+package table

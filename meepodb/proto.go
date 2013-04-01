@@ -37,9 +37,9 @@ const (
     KEY_BITS        = 20
     VALUE_BITS      = 30
 
-    MAX_TABLE_NAME_LEN = uint32(1) << TABLE_NAME_BITS
-    MAX_KEY_LEN        = uint32(1) << KEY_BITS
-    MAX_VALUE_LEN      = uint32(1) << VALUE_BITS
+    MAX_TABLE_NAME_LEN = uint64(1) << TABLE_NAME_BITS - 1
+    MAX_KEY_LEN        = uint64(1) << KEY_BITS - 1
+    MAX_VALUE_LEN      = uint64(1) << VALUE_BITS -1
 
     GET_CMD  = "GET"
     SET_CMD  = "SET"
@@ -85,11 +85,11 @@ func DecodeHead(head []byte) (byte, uint64, uint64, uint64) {
     for i := range head {
         x = (x << 8) | uint64(head[i])
     }
-    var vlen uint64 = x & (1 << VALUE_BITS - 1)
+    var vlen uint64 = x & MAX_VALUE_LEN
     x >>= VALUE_BITS
-    var klen uint64 = x & (1 << KEY_BITS - 1)
+    var klen uint64 = x & MAX_KEY_LEN
     x >>= KEY_BITS
-    var tlen uint64 = x & (1 << TABLE_NAME_BITS - 1)
+    var tlen uint64 = x & MAX_TABLE_NAME_LEN
     x >>= TABLE_NAME_BITS
     return byte(x), tlen, klen, vlen
 }

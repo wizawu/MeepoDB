@@ -22,6 +22,10 @@
 
 package meepodb
 
-import (
-    . "syscall"
-)
+type Layer struct {
+    size []byte
+    index []byte
+}
+
+type Cola struct {
+}
