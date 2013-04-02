@@ -36,22 +36,6 @@ type Block struct {
     path    string
 }
 
-type BlockSlice []Block
-
-func (blocks BlockSlice) Len() int {
-    return len(blocks)
-}
-
-func (blocks BlockSlice) Less(i, j int) bool {
-    return bytesCompare(blocks[i].key, blocks[j].key) < 0
-}
-
-func (blocks BlockSlice) Swap(i, j int) {
-    temp := blocks[i]
-    blocks[i] = blocks[j]
-    blocks[j] = temp
-}
-
 func (block *Block) Free() bool {
     return Munmap(block.raw) == nil && Unlink(block.path) == nil
 }

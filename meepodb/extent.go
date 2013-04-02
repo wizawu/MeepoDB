@@ -23,6 +23,7 @@
 package meepodb
 
 import (
+    "bytes"
     "os"
     "sort"
     "strconv"
@@ -72,7 +73,7 @@ func (extent *Extent) Find(key []byte) int64 {
     for left < right {
         var middle uint64 = (left + right) / 2
         var midkey []byte = extent.Key(middle)
-        var flag int = bytesCompare(midkey, key)
+        var flag int = bytes.Compare(midkey, key)
         if flag == 0 {
             result = int64(middle)
             break
@@ -218,7 +219,7 @@ func MergeExtents(dir string, number uint64, ext [2]*Extent) (*Extent, bool) {
     var iter     [2]uint64
     len_ := [2]uint64{ ext[0].total, ext[1].total }
     for iter[0] < len_[0] && iter[1] < len_[1] {
-        flag := bytesCompare(ext[0].Key(iter[0]), ext[1].Key(iter[1]))
+        flag := bytes.Compare(ext[0].Key(iter[0]), ext[1].Key(iter[1]))
         if flag == 0 {
             k, v = ext[1].Record(iter[1])
             iter[0], iter[1] = iter[0] + 1, iter[1] + 1
@@ -320,21 +321,12 @@ func uint64ToBytes(x uint64) []byte {
     return result[:]
 }
 
-/* if a > b  return positive integer
-   if a = b  return 0
-   if a < b  return negative integer 
-*/
-func bytesCompare(a []byte, b []byte) int {
-    var clen int = len(a)
-    if len(b) < clen {
-        clen = len(b)
+func pathname(dir string, number int) string {
+    var suffix string
+    if number & 1 == 1 {
+        suffix = strconv.Itoa(number >> 1) + ".1"
+    } else {
+        suffix = strconv.Itoa(number >> 1) + ".0"
     }
-    for i := 0; i < clen; i++ {
-        if a[i] < b[i] {
-            return -1
-        } else if a[i] > b[i] {
-            return 1
-        }
-    }
-    return len(a) - len(b)
+    return dir + "/ext_" + suffix
 }
