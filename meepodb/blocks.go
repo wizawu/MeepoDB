@@ -57,6 +57,10 @@ type Blocks struct {
     path     string
 }
 
+func (blx *Blocks) Close() bool {
+    return Close(blx.fd) == nil
+}
+
 func (blx *Blocks) Records() RecordSlice {
     return blx.records
 }

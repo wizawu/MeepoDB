@@ -30,12 +30,78 @@ import (
 )
 
 type COLA struct {
-    metafd    int
-    bitmap    uint64
+    MetaFd    int
+    Bitmap    uint64
     blocks    *Blocks
     /* 57 because of log() */
     extents   [57]*Extent
-    loadtime  int64
+    LoadTime  int64
+    Path      string
+}
+
+func (cola *COLA) Get(key []byte) []byte {
+    var value []byte
+    value = cola.blocks.Get(key)
+    if value != nil {
+        return value
+    }
+    for i := 64; i > 0; i <<= 1 {
+        if uint64(i) & cola.Bitmap > 0 {
+            j := cola.extents[log(i)].Find(key)
+            if j >= 0 {
+                _, value = cola.extents[log(i)].Record(uint64(j))
+                return value
+            }
+        }
+    }
+    return nil
+}
+
+func (cola *COLA) Set(key, value []byte) bool {
+    return cola.blocks.Set(key, value)
+}
+
+func (cola *COLA) PushDown() bool {
+    ok := BlocksToExtent(cola.Path + "/ext_64.1", cola.blocks.records)
+    if !ok {
+        return false
+    }
+    for i := 64; i > 0; i <<= 1 {
+        if uint64(i) & cola.Bitmap == 0 {
+            oldpath := cola.Path + "/ext_" + strconv.Itoa(i) + ".1"
+            newpath := cola.Path + "/ext_" + strconv.Itoa(i)
+            err := Rename(oldpath, newpath)
+            if err != nil {
+                return false
+            }
+            cola.Bitmap |= uint64(i)
+            cola.extents[log(i)], ok = OpenExtent(newpath)
+            if !ok {
+                return false
+            }
+            break
+        }
+        oldpath := cola.Path + "/ext_" + strconv.Itoa(i) + ".1"
+        newpath := cola.Path + "/ext_" + strconv.Itoa(i << 1) + ".1"
+        ext, ok := OpenExtent(oldpath)
+        if !ok {
+            return false
+        }
+        ok = MergeExtents(newpath, cola.extents[log(i)], ext)
+        if !ok {
+            return false
+        }
+        cola.extents[log(i)].Free()
+        ext.Free()
+        cola.Bitmap &= ^uint64(i)
+    }
+    n, err := Write(cola.MetaFd, uint64ToBytes(cola.Bitmap))
+    if err != nil || n != 8 {
+        return false
+    }
+    cola.blocks.Close()
+    cola.blocks, ok = NewBlocks(cola.Path + "/blx")
+    return ok
 }
 
 func NewCOLA(path string) (*COLA, bool) {
@@ -45,11 +111,11 @@ func NewCOLA(path string) (*COLA, bool) {
     }
     var cola = new(COLA)
     var mode int = O_WRONLY | O_CREAT
-    cola.metafd, err = Open(path + "/meta", mode, S_IRALL | S_IWALL)
+    cola.MetaFd, err = Open(path + "/meta", mode, S_IRALL | S_IWALL)
     if err != nil {
         return nil, false
     }
-    n, err := Write(cola.metafd, uint64ToBytes(cola.bitmap))
+    n, err := Write(cola.MetaFd, uint64ToBytes(cola.Bitmap))
     if err != nil || n != 8 {
         return nil, false
     }
@@ -58,36 +124,42 @@ func NewCOLA(path string) (*COLA, bool) {
     if !ok {
         return nil, false
     }
-    cola.loadtime = time.Now().Unix()
+    cola.LoadTime = time.Now().Unix()
+    cola.Path = path
     return cola, true
 }
 
 func OpenCOLA(path string) (*COLA, bool) {
     var cola = new(COLA)
     var err error
-    cola.metafd, err = Open(path + "/meta", O_RDWR, S_IRALL | S_IWALL)
+    cola.MetaFd, err = Open(path + "/meta", O_RDWR, S_IRALL | S_IWALL)
     if err != nil {
         return nil, false
     }
-    Seek(cola.metafd, -8, os.SEEK_END)
+    Seek(cola.MetaFd, -8, os.SEEK_END)
     var buffer = make([]byte, 8)
-    n, err := Read(cola.metafd, buffer)
+    n, err := Read(cola.MetaFd, buffer)
     if err != nil || n != 8 {
         return nil, false
     }
-    cola.bitmap = bytesToUint64(buffer)
+    cola.Bitmap = bytesToUint64(buffer)
     var ok bool
     cola.blocks, ok = LoadBlocks(path + "/blx")
     if !ok {
         return nil, false
     }
     for i := 64; i > 0; i <<= 1 {
-        if uint64(i) & cola.bitmap > 0 {
+        if uint64(i) & cola.Bitmap > 0 {
             extpath := path + "/ext_" + strconv.Itoa(i)
             cola.extents[log(i)], ok = OpenExtent(extpath)
+            if !ok {
+                return nil, false
+            }
         }
     }
-    cola.loadtime = time.Now().Unix()
+    cola.LoadTime = time.Now().Unix()
+    cola.Path = path
+    // cola.PushDown
     return cola, true
 }
 
