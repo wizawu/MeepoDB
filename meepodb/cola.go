@@ -58,7 +58,14 @@ func (cola *COLA) Get(key []byte) []byte {
 }
 
 func (cola *COLA) Set(key, value []byte) bool {
-    return cola.blocks.Set(key, value)
+    var ok bool = cola.blocks.Set(key, value)
+    if !ok {
+        return false
+    }
+    if cola.blocks.bitmap == ^uint64(0) {
+        return cola.PushDown()
+    }
+    return true
 }
 
 func (cola *COLA) PushDown() bool {
@@ -159,8 +166,10 @@ func OpenCOLA(path string) (*COLA, bool) {
     }
     cola.LoadTime = time.Now().Unix()
     cola.Path = path
-    // cola.PushDown
-    return cola, true
+    if cola.blocks.bitmap == ^uint64(0) {
+        ok = cola.PushDown()
+    }
+    return cola, ok
 }
 
 func log(i int) int {
