@@ -103,10 +103,10 @@ func (blx *Blocks) Set(key, value []byte) bool {
     return false
 }
 
-func NewBlocks(dir string) (*Blocks, bool) {
+func NewBlocks(path string) (*Blocks, bool) {
     var err error
     blx := new(Blocks)
-    blx.path = dir + "/blx"
+    blx.path = path
     var mode int = O_RDWR | O_CREAT | O_TRUNC
     blx.fd, err = Open(blx.path, mode, S_IRALL | S_IWALL)
     if err != nil {
@@ -116,10 +116,10 @@ func NewBlocks(dir string) (*Blocks, bool) {
     return blx, true
 }
 
-func OpenBlocks(dir string) (*Blocks, int64) {
+func OpenBlocks(path string) (*Blocks, int64) {
     var err error
     blx := new(Blocks)
-    blx.path = dir + "/blx"
+    blx.path = path
     blx.fd, err = Open(blx.path, O_RDWR, S_IRALL | S_IWALL)
     if err != nil {
         return blx, -1
@@ -185,8 +185,8 @@ func WriteBlocks(blx *Blocks) bool {
     return err == nil
 }
 
-func LoadBlocks(dir string) (*Blocks, bool) {
-    blx, trunc := OpenBlocks(dir)
+func LoadBlocks(path string) (*Blocks, bool) {
+    blx, trunc := OpenBlocks(path)
     if trunc == -1 {
         return blx, false
     } else if blx.compact {
@@ -195,7 +195,7 @@ func LoadBlocks(dir string) (*Blocks, bool) {
         if !ok {
             return blx, false
         }
-        blx, trunc = OpenBlocks(dir)
+        blx, trunc = OpenBlocks(path)
         if trunc == -1 {
             return blx, false
         }

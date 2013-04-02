@@ -29,4 +29,5 @@ import (
 const (
     S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
     S_IWALL uint32 = S_IWUSR | S_IWGRP | S_IWOTH
+    S_IXALL uint32 = S_IXUSR | S_IXGRP | S_IXOTH
 )
