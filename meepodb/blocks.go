@@ -57,6 +57,10 @@ type Blocks struct {
     path     string
 }
 
+func (blx *Blocks) Records() RecordSlice {
+    return blx.records
+}
+
 func (blx *Blocks) Get(key []byte) []byte {
     for i := uint64(0); i < 64; i++ {
         if (uint64(1) << i) & blx.bitmap > 0 {
@@ -103,7 +107,8 @@ func NewBlocks(dir string) (*Blocks, bool) {
     var err error
     blx := new(Blocks)
     blx.path = dir + "/blx"
-    blx.fd, err = Open(blx.path, O_RDWR | O_CREAT | O_TRUNC, S_IRALL | S_IWALL)
+    var mode int = O_RDWR | O_CREAT | O_TRUNC
+    blx.fd, err = Open(blx.path, mode, S_IRALL | S_IWALL)
     if err != nil {
         return blx, false
     }

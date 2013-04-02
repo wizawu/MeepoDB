@@ -24,15 +24,11 @@ package meepodb
 
 import (
     "bytes"
-    "os"
     "sort"
-    "strconv"
     . "syscall"
 )
 
 type Extent struct {
-    /* E.g. number of ext_128.1 is (128 << 1 | 1). */
-    number   uint64
     raw      []byte
     /* Size of extent */
     size     uint64
@@ -40,6 +36,10 @@ type Extent struct {
     total    uint64
     index    []byte
     path     string
+}
+
+func (extent *Extent) Count() uint64 {
+    return extent.total
 }
 
 func (extent *Extent) Index(i uint64) (uint64, uint64) {
@@ -87,17 +87,20 @@ func (extent *Extent) Find(key []byte) int64 {
 }
 
 func (extent *Extent) Free() bool {
-    return Munmap(extent.raw) == nil && Unlink(extent.path) == nil
+    return Munmap(extent.raw) == nil
 }
 
-func OpenExtent(dir string, number uint64) (*Extent, bool) {
+func OpenExtent(path string) (*Extent, bool) {
+    /* Extent format:
+       |  size   |  total  |  index   | records |
+       |---------|---------|----------|---------|
+       | 8 bytes | 8 bytes | 8X bytes | Y bytes |
+    */
     extent := new(Extent)
-    var path string = pathname(dir, number)
     fd, err := Open(path, O_RDONLY, S_IREAD)
     if err != nil {
         return extent, false
     }
-
     /* Decode extent head */
     buffer := make([]byte, 16)
     n, err := Read(fd, buffer)
@@ -106,16 +109,14 @@ func OpenExtent(dir string, number uint64) (*Extent, bool) {
     }
     var size  uint64 = bytesToUint64(buffer[0 : 8])
     var total uint64 = bytesToUint64(buffer[8 : 16])
-
     /* Extent struct */
-    raw, err := Mmap(fd, 0, size, PROT_READ, MAP_PRIVATE)
+    raw, err := Mmap(fd, 0, int(size), PROT_READ, MAP_PRIVATE)
     Close(fd)
     if err != nil {
         return extent, false
     }
     var index []byte = raw[16 : 16 + 8 * total]
     *extent = Extent {
-        number  : number,
         raw     : raw,
         size    : size,
         total   : total,
@@ -125,106 +126,71 @@ func OpenExtent(dir string, number uint64) (*Extent, bool) {
     return extent, true
 }
 
-func BlocksToExtent(dir string, number uint64, blocks BlockSlice) (*Extent, bool) {
-    sort.Sort(blocks)
-    extent := new(Extent)
-
-    /* Open file */
-    var path string = pathname(dir, int(number))
-    var mode int = O_RDWR | O_CREAT | O_TRUNC
-    var S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
-    var S_IWALL uint32 = S_IWUSR | S_IWGRP | S_IWOTH
-    fd, err := Open(path, mode, S_IRALL | S_IWALL)
-    if err != nil {
-        return extent, false
-    }
-
-    /* Extent format:
-       |  size   |  total  |  index   | records |
-       |---------|---------|----------|---------|
-       | 8 bytes | 8 bytes | 8X bytes | Y bytes |
-    */
+func BlocksToExtent(path string, records RecordSlice) bool {
+    sort.Sort(records)
     var total uint64 = 64
     var size uint64 = 16 + 8 * total
-    /* Calculate offsets */
-    var offsets [total]uint64
-    for i := 0; i < total; i++ {
+    offsets := make([]uint64, total)
+    for i := uint64(0); i < total; i++ {
         offsets[i] = size
-        size += uint64(len(blocks[i].key) + len(blocks[i].value))
+        size += uint64(len(records[i].key) + len(records[i].value))
+    }
+
+    var mode int = O_RDWR | O_CREAT | O_TRUNC
+    fd, err := Open(path, mode, S_IRALL | S_IWALL)
+    if err != nil {
+        return false
     }
     /* Write extent head */
     n, err := Write(fd, uint64ToBytes(size))
     if err != nil || n != 8 {
-        return extent, false
+        return false
     }
     n, err = Write(fd, uint64ToBytes(total))
     if err != nil || n != 8 {
-        return extent, false
+        return false
     }
     /* Write index */
-    for i := 0; i < total; i++ {
-        ent := offsets[i] << KEY_BITS + uint64(len(blocks[i].key))
+    for i := uint64(0); i < total; i++ {
+        ent := offsets[i] << KEY_BITS + uint64(len(records[i].key))
         n, err = Write(fd, uint64ToBytes(ent))
         if err != nil || n != 8 {
-            return extent, false
+            return false
         }
     }
     /* Write records */
-    for i := 0; i < total; i++ {
-        n, err = Write(fd, blocks[i].key)
-        if err != nil || n != len(blocks[i].key) {
-            return extent, false
+    for i := uint64(0); i < total; i++ {
+        n, err = Write(fd, records[i].key)
+        if err != nil || n != len(records[i].key) {
+            return false
         }
-        n, err = Write(fd, blocks[i].value)
-        if err != nil || n != len(blocks[i].value) {
-            return extent, false
+        n, err = Write(fd, records[i].value)
+        if err != nil || n != len(records[i].value) {
+            return false
         }
     }
-
-    /* Extent struct */
-    raw, err := Mmap(fd, 0, size, PROT_READ, MAP_PRIVATE)
     Close(fd)
-    if err != nil {
-        return extent, false
-    }
-    *extent = Extent {
-        number  : number,
-        raw     : raw,
-        size    : size,
-        total   : total,
-        index   : raw[16 : 16 + 8 * total],
-        path    : path,
-    }
-    return extent, true
+    return true
 }
 
-func MergeExtents(dir string, number uint64, ext [2]*Extent) (*Extent, bool) {
-    extent := new(Extent)
-    /* Open file */
-    var path string = pathname(dir, int(number))
-    var mode int = O_RDWR | O_CREAT | O_TRUNC
-    var S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
-    var S_IWALL uint32 = S_IWUSR | S_IWGRP | S_IWOTH
-    fd, err := Open(path, mode, S_IRALL | S_IWALL)
-    if err != nil {
-        return extent, false
-    }
-
+func MergeExtents(path string, ext0, ext1 *Extent) bool {
     /* Get total and entries */
-    var total    uint64
-    var size     uint64 = 16
-    var entries  [number >> 1]uint64
-    var flags    [number >> 1]int
-    var k, v     []byte
-    var iter     [2]uint64
-    len_ := [2]uint64{ ext[0].total, ext[1].total }
+    ext := [2]*Extent{ ext0, ext1 }
+    var total  uint64
+    var size   uint64 = 16
+    var limit  uint64 = ext[0].total + ext[1].total
+    var k, v   []byte
+    var iter   [2]uint64
+    entries := make([]uint64, limit)
+    flags   := make([]int, limit)
+    len_    := [2]uint64{ ext[0].total, ext[1].total }
     for iter[0] < len_[0] && iter[1] < len_[1] {
         flag := bytes.Compare(ext[0].Key(iter[0]), ext[1].Key(iter[1]))
         if flag == 0 {
             k, v = ext[1].Record(iter[1])
             iter[0], iter[1] = iter[0] + 1, iter[1] + 1
         } else if flag < 0 {
-            k, v := ext[0].Record(iter[0])
+            k, v = ext[0].Record(iter[0])
             iter[0]++
         } else {
             k, v = ext[1].Record(iter[1])
@@ -248,20 +214,26 @@ func MergeExtents(dir string, number uint64, ext [2]*Extent) (*Extent, bool) {
         }
     }
     size += 8 * total
+
+    var mode int = O_RDWR | O_CREAT | O_TRUNC
+    fd, err := Open(path, mode, S_IRALL | S_IWALL)
+    if err != nil {
+        return false
+    }
     /* Write extent head */
     n, err := Write(fd, uint64ToBytes(size))
     if err != nil || n != 8 {
-        return extent, false
+        return false
     }
     n, err = Write(fd, uint64ToBytes(total))
     if err != nil || n != 8 {
-        return extent, false
+        return false
     }
     /* Write index */
     for i := uint64(0); i < total; i++ {
         n, err = Write(fd, uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
         if err != nil || n != 8 {
-            return extent, false
+            return false
         }
     }
     /* Write records */
@@ -279,37 +251,13 @@ func MergeExtents(dir string, number uint64, ext [2]*Extent) (*Extent, bool) {
         }
         n, err = Write(fd, k)
         if err != nil || n != len(k) {
-            return extent, false
+            return false
         }
         n, err = Write(fd, v)
         if err != nil || n != len(v) {
-            return extent, false
+            return false
         }
     }
-
-    /* Extent struct */
-    raw, err := Mmap(fd, 0, size, PROT_READ, MAP_PRIVATE)
     Close(fd)
-    if err != nil {
-        return extent, false
-    }
-    *extent = Extent {
-        number  : number,
-        raw     : raw,
-        size    : size,
-        total   : total,
-        index   : raw[16 : 16 + 8 * total],
-        path    : path,
-    }
-    return extent, true
-}
-
-func pathname(dir string, number int) string {
-    var suffix string
-    if number & 1 == 1 {
-        suffix = strconv.Itoa(number >> 1) + ".1"
-    } else {
-        suffix = strconv.Itoa(number >> 1) + ".0"
-    }
-    return dir + "/ext_" + suffix
+    return true
 }
