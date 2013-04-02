@@ -68,32 +68,35 @@ func (blx *Blocks) Get(key []byte) []byte {
     return nil
 }
 
-/* Return whether records are full. */
 func (blx *Blocks) Set(key, value []byte) bool {
     for i := uint64(0); i < 64; i++ {
         if (uint64(1) << i) & blx.bitmap > 0 {
             if bytes.Compare(blx.records[i].key, key) == 0 {
+                ok := writeRecord(blx.fd, i, key, value)
+                if !ok {
+                    return false
+                }
                 blx.records[i].value = make([]byte, len(value))
                 copy(blx.records[i].value, value)
-                return false
+                return true
             }
         }
     }
     for i := uint64(0); i < 64; i++ {
         if (uint64(1) << i) & blx.bitmap == 0 {
+            ok := writeRecord(blx.fd, i, key, value)
+            if !ok {
+                return false
+            }
             blx.records[i].key = make([]byte, len(key))
             blx.records[i].value = make([]byte, len(value))
             copy(blx.records[i].key, key)
             copy(blx.records[i].value, value)
             blx.bitmap |= uint64(1) << i
-            if blx.bitmap + 1 == 0 {
-                return true
-            } else {
-                return false
-            }
+            return true
         }
     }
-    return true
+    return false
 }
 
 func NewBlocks(dir string) (*Blocks, bool) {
@@ -164,19 +167,8 @@ func WriteBlocks(blx *Blocks) bool {
     var bitmap uint64 = blx.bitmap
     for i := uint64(0); i < 64; i++ {
         if bitmap & 1 == 1 {
-            klen := uint64(len(blx.records[i].key))
-            vlen := uint64(len(blx.records[i].value))
-            head := encodeBlxHead(i, klen, vlen)
-            n, err := Write(fd, head)
-            if err != nil || n != 8 {
-                return false
-            }
-            n, err = Write(fd, blx.records[i].key)
-            if err != nil || n != int(klen) {
-                return false
-            }
-            n, err = Write(fd, blx.records[i].value)
-            if err != nil || n != int(vlen) {
+            ok := writeRecord(fd, i, blx.records[i].key, blx.records[i].value)
+            if !ok {
                 return false
             }
         }
@@ -205,6 +197,25 @@ func LoadBlocks(dir string) (*Blocks, bool) {
     }
     Ftruncate(blx.fd, trunc)
     return blx, true
+}
+
+func writeRecord(fd int, i uint64, key []byte, value []byte) bool {
+    klen := uint64(len(key))
+    vlen := uint64(len(value))
+    head := encodeBlxHead(i, klen, vlen)
+    n, err := Write(fd, head)
+    if err != nil || n != 8 {
+        return false
+    }
+    n, err = Write(fd, key)
+    if err != nil || n != int(klen) {
+        return false
+    }
+    n, err = Write(fd, value)
+    if err != nil || n != int(vlen) {
+        return false
+    }
+    return true
 }
 
 func decodeBlxHead(buffer []byte) (uint64, uint64, uint64) {
