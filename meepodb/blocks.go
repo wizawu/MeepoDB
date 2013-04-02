@@ -25,8 +25,6 @@ package meepodb
 import (
     "bytes"
     "os/exec"
-    "sort"
-    "strconv"
     . "syscall"
 )
 
@@ -59,12 +57,62 @@ type Blocks struct {
     path     string
 }
 
-func OpenBlocks(dir string) (*Blocks, int64) {
+func (blx *Blocks) Get(key []byte) []byte {
+    for i := uint64(0); i < 64; i++ {
+        if (uint64(1) << i) & blx.bitmap > 0 {
+            if bytes.Compare(blx.records[i].key, key) == 0 {
+                return blx.records[i].value
+            }
+        }
+    }
+    return nil
+}
+
+/* Return whether records are full. */
+func (blx *Blocks) Set(key, value []byte) bool {
+    for i := uint64(0); i < 64; i++ {
+        if (uint64(1) << i) & blx.bitmap > 0 {
+            if bytes.Compare(blx.records[i].key, key) == 0 {
+                blx.records[i].value = make([]byte, len(value))
+                copy(blx.records[i].value, value)
+                return false
+            }
+        }
+    }
+    for i := uint64(0); i < 64; i++ {
+        if (uint64(1) << i) & blx.bitmap == 0 {
+            blx.records[i].key = make([]byte, len(key))
+            blx.records[i].value = make([]byte, len(value))
+            copy(blx.records[i].key, key)
+            copy(blx.records[i].value, value)
+            blx.bitmap |= uint64(1) << i
+            if blx.bitmap + 1 == 0 {
+                return true
+            } else {
+                return false
+            }
+        }
+    }
+    return true
+}
+
+func NewBlocks(dir string) (*Blocks, bool) {
+    var err error
     blx := new(Blocks)
     blx.path = dir + "/blx"
-    var S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
-    var S_IWALL uint32 = S_IWUSR | S_IWGRP | S_IWOTH
-    blx.fd, err := Open(blx.path, O_RDWR, S_IRALL | S_IWALL)
+    blx.fd, err = Open(blx.path, O_RDWR | O_CREAT | O_TRUNC, S_IRALL | S_IWALL)
+    if err != nil {
+        return blx, false
+    }
+    blx.records = make([]Record, 64)
+    return blx, true
+}
+
+func OpenBlocks(dir string) (*Blocks, int64) {
+    var err error
+    blx := new(Blocks)
+    blx.path = dir + "/blx"
+    blx.fd, err = Open(blx.path, O_RDWR, S_IRALL | S_IWALL)
     if err != nil {
         return blx, -1
     }
@@ -88,12 +136,12 @@ func OpenBlocks(dir string) (*Blocks, int64) {
         i, klen, vlen := decodeBlxHead(buffer)
         blx.records[i].key = make([]byte, klen)
         n, err = Read(blx.fd, blx.records[i].key)
-        if err != nil || n != klen {
+        if err != nil || n != int(klen) {
             return blx, trunc
         }
         blx.records[i].value = make([]byte, vlen)
         n, err = Read(blx.fd, blx.records[i].value)
-        if err != nil || n != vlen {
+        if err != nil || n != int(vlen) {
             return blx, trunc
         }
         i = uint64(1) << i
@@ -101,7 +149,7 @@ func OpenBlocks(dir string) (*Blocks, int64) {
             blx.compact = true
         }
         blx.bitmap |= i
-        trunc += 8 + klen + vlen
+        trunc += 8 + int64(klen + vlen)
     }
     return blx, trunc
 }
@@ -109,8 +157,6 @@ func OpenBlocks(dir string) (*Blocks, int64) {
 func WriteBlocks(blx *Blocks) bool {
     var path string = blx.path + ".1"
     var mode int = O_RDWR | O_CREAT | O_TRUNC
-    var S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
-    var S_IWALL uint32 = S_IWUSR | S_IWGRP | S_IWOTH
     fd, err := Open(path, mode, S_IRALL | S_IWALL)
     if err != nil {
         return false
@@ -120,17 +166,17 @@ func WriteBlocks(blx *Blocks) bool {
         if bitmap & 1 == 1 {
             klen := uint64(len(blx.records[i].key))
             vlen := uint64(len(blx.records[i].value))
-            head := EncodeBlxHead(i, klen, vlen)
+            head := encodeBlxHead(i, klen, vlen)
             n, err := Write(fd, head)
             if err != nil || n != 8 {
                 return false
             }
             n, err = Write(fd, blx.records[i].key)
-            if err != nil || n != klen {
+            if err != nil || n != int(klen) {
                 return false
             }
             n, err = Write(fd, blx.records[i].value)
-            if err != nil || n != vlen {
+            if err != nil || n != int(vlen) {
                 return false
             }
         }
@@ -161,7 +207,7 @@ func LoadBlocks(dir string) (*Blocks, bool) {
     return blx, true
 }
 
-func decodeBlxHead(buffer []byte) uint64, uint64, uint64 {
+func decodeBlxHead(buffer []byte) (uint64, uint64, uint64) {
     idx   := uint64(buffer[0])
     klen  := uint64(buffer[1])
     klen   = klen << 8 + uint64(buffer[2])
@@ -171,7 +217,7 @@ func decodeBlxHead(buffer []byte) uint64, uint64, uint64 {
     vlen   = vlen << 8 + uint64(buffer[6])
     vlen   = vlen << 8 + uint64(buffer[7])
     return idx, klen, vlen
-)
+}
 
 func encodeBlxHead(idx, klen, vlen uint64) []byte {
     var head [8]byte
@@ -183,4 +229,5 @@ func encodeBlxHead(idx, klen, vlen uint64) []byte {
     head[5] = byte(vlen >> 16)
     head[6] = byte(vlen >> 8)
     head[7] = byte(vlen)
+    return head[:]
 }

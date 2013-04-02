@@ -25,3 +25,8 @@ package meepodb
 import (
     . "syscall"
 )
+
+const (
+    S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
+    S_IWALL uint32 = S_IWUSR | S_IWGRP | S_IWOTH
+)

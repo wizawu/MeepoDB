@@ -88,3 +88,20 @@ func DecodeHead(head []byte) (byte, uint64, uint64, uint64) {
     x >>= TABLE_NAME_BITS
     return byte(x), tlen, klen, vlen
 }
+
+func bytesToUint64(bytes []byte) uint64 {
+    var x uint64
+    for _, b := range bytes[0 : 8] {
+        x = x << 8 + uint64(b)
+    }
+    return x
+}
+
+func uint64ToBytes(x uint64) []byte {
+    var result [8]byte
+    for i := range result {
+        k := uint64(56 - 8 * i)
+        result[i] = byte(x >> k)
+    }
+    return result[:]
+}
