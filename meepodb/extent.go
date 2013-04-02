@@ -141,7 +141,7 @@ func BlocksToExtent(dir string, number uint64, blocks BlockSlice) (*Extent, bool
     /* Extent format:
        |  size   |  total  |  index   | records |
        |---------|---------|----------|---------|
-       | 8 bytes | 8 bytes | 8T bytes | X bytes |
+       | 8 bytes | 8 bytes | 8X bytes | Y bytes |
     */
     var total uint64 = 64
     var size uint64 = 16 + 8 * total

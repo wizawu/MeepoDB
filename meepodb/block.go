@@ -38,8 +38,8 @@ type Block struct {
 
 type BlockSlice []Block
 
-func (blocks BlockSlice) Len() {
-    return len(Block)
+func (blocks BlockSlice) Len() int {
+    return len(blocks)
 }
 
 func (blocks BlockSlice) Less(i, j int) bool {
