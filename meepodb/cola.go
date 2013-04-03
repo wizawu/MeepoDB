@@ -77,6 +77,12 @@ func (cola *COLA) PushDown() bool {
         oldpath := cola.Path + "/ext_" + strconv.Itoa(i) + ".1"
         /* If current extent does not exist... */
         if uint64(i) & cola.Bitmap == 0 {
+            if uint64(i) > cola.Bitmap {
+                ok = CompactExtent(oldpath)
+                if !ok {
+                    return false
+                }
+            }
             newpath := cola.Path + "/ext_" + strconv.Itoa(i)
             err := Rename(oldpath, newpath)
             if err != nil {
@@ -102,6 +108,7 @@ func (cola *COLA) PushDown() bool {
                 return false
             }
             cola.extents[j].Free()
+            ext.Free()
             err := Rename(oldpath, cola.extents[j].path)
             if err != nil {
                 return false
@@ -164,14 +171,23 @@ func OpenCOLA(path string) (*COLA, bool) {
     if err != nil {
         return nil, false
     }
+    /* Read last bitmap */
     Seek(cola.MetaFd, -8, os.SEEK_END)
     var buffer = make([]byte, 8)
     n, err := Read(cola.MetaFd, buffer)
     if err != nil || n != 8 {
         return nil, false
     }
-    cola.Bitmap = bytesToUint64(buffer)
+    /* Delete all the old bitmaps */
+    Seek(cola.MetaFd, 0, os.SEEK_SET)
+    n, err = Write(cola.MetaFd, buffer)
+    if err != nil || n != 8 {
+        return nil, false
+    }
+    Ftruncate(cola.MetaFd, 8)
+
     var ok bool
+    cola.Bitmap = bytesToUint64(buffer)
     cola.blocks, ok = LoadBlocks(path + "/blx")
     if !ok {
         return nil, false

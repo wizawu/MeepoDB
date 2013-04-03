@@ -111,7 +111,7 @@ func NewBlocks(path string) (*Blocks, bool) {
     var err error
     blx := new(Blocks)
     blx.path = path
-    var mode int = O_RDWR | O_CREAT | O_TRUNC
+    var mode int = O_WRONLY | O_CREAT | O_TRUNC
     blx.fd, err = Open(blx.path, mode, S_IRALL | S_IWALL)
     if err != nil {
         return blx, false
@@ -124,7 +124,8 @@ func OpenBlocks(path string) (*Blocks, int64) {
     var err error
     blx := new(Blocks)
     blx.path = path
-    blx.fd, err = Open(blx.path, O_RDWR, S_IRALL | S_IWALL)
+    var mode int = O_RDWR | O_APPEND
+    blx.fd, err = Open(blx.path, mode, S_IRALL | S_IWALL)
     if err != nil {
         return blx, -1
     }
@@ -168,7 +169,7 @@ func OpenBlocks(path string) (*Blocks, int64) {
 
 func WriteBlocks(blx *Blocks) bool {
     var path string = blx.path + ".1"
-    var mode int = O_RDWR | O_CREAT | O_TRUNC
+    var mode int = O_WRONLY | O_CREAT | O_TRUNC
     fd, err := Open(path, mode, S_IRALL | S_IWALL)
     if err != nil {
         return false

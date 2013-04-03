@@ -69,7 +69,7 @@ func (extent *Extent) Record(i uint64) ([]byte, []byte) {
 /* Binary search */
 func (extent *Extent) Find(key []byte) int64 {
     var result int64 = -1
-    var left, right uint64 = 0, extent.total - 1
+    var left, right uint64 = 0, extent.total
     for left < right {
         var middle uint64 = (left + right) / 2
         var midkey []byte = extent.Key(middle)
@@ -136,7 +136,7 @@ func BlocksToExtent(path string, records RecordSlice) bool {
         size += uint64(len(records[i].key) + len(records[i].value))
     }
 
-    var mode int = O_RDWR | O_CREAT | O_TRUNC
+    var mode int = O_WRONLY | O_CREAT | O_TRUNC
     fd, err := Open(path, mode, S_IRALL | S_IWALL)
     if err != nil {
         return false
@@ -215,7 +215,7 @@ func MergeExtents(path string, ext0, ext1 *Extent) bool {
     }
     size += 8 * total
 
-    var mode int = O_RDWR | O_CREAT | O_TRUNC
+    var mode int = O_WRONLY | O_CREAT | O_TRUNC
     fd, err := Open(path, mode, S_IRALL | S_IWALL)
     if err != nil {
         return false
@@ -260,4 +260,59 @@ func MergeExtents(path string, ext0, ext1 *Extent) bool {
     }
     Close(fd)
     return true
+}
+
+func CompactExtent(path string) bool {
+    ext, ok := OpenExtent(path)
+    if !ok {
+        return false
+    }
+    var mode int = O_WRONLY | O_CREAT | O_TRUNC
+    fd, err := Open(path + ".c", mode, S_IRALL | S_IWALL)
+    var size uint64 = 16
+    var total uint64
+    var entries = make([]uint64, ext.total)
+    for i := uint64(0); i < ext.total; i++ {
+        k, v := ext.Record(i)
+        if len(v) > 0 {
+            entries[total] = size << KEY_BITS + uint64(len(k))
+            size += uint64(len(k) + len(v))
+            total++
+        }
+    }
+    size += 8 * total
+    /* Write extent head */
+    n, err := Write(fd, uint64ToBytes(size))
+    if err != nil || n != 8 {
+        return false
+    }
+    n, err = Write(fd, uint64ToBytes(total))
+    if err != nil || n != 8 {
+        return false
+    }
+    /* Write index */
+    for i := uint64(0); i < total; i++ {
+        n, err = Write(fd, uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
+        if err != nil || n != 8 {
+            return false
+        }
+    }
+    /* Write records */
+    for i := uint64(0); i < ext.total; i++ {
+        k, v := ext.Record(i)
+        if len(v) > 0 {
+            n, err = Write(fd, k)
+            if err != nil || n != len(k) {
+                return false
+            }
+            n, err = Write(fd, v)
+            if err != nil || n != len(v) {
+                return false
+            }
+        }
+    }
+    Close(fd)
+    ext.Free()
+    err = Rename(path + ".c", path)
+    return err == nil
 }
