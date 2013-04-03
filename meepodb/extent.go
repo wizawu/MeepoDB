@@ -267,8 +267,6 @@ func CompactExtent(path string) bool {
     if !ok {
         return false
     }
-    var mode int = O_WRONLY | O_CREAT | O_TRUNC
-    fd, err := Open(path + ".c", mode, S_IRALL | S_IWALL)
     var size uint64 = 16
     var total uint64
     var entries = make([]uint64, ext.total)
@@ -280,8 +278,16 @@ func CompactExtent(path string) bool {
             total++
         }
     }
-    size += 8 * total
+    if total == ext.total {
+        return true
+    }
+    var mode int = O_WRONLY | O_CREAT | O_TRUNC
+    fd, err := Open(path + ".c", mode, S_IRALL | S_IWALL)
+    if err != nil {
+        return false
+    }
     /* Write extent head */
+    size += 8 * total
     n, err := Write(fd, uint64ToBytes(size))
     if err != nil || n != 8 {
         return false
