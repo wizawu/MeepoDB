@@ -33,7 +33,7 @@ type COLA struct {
     MetaFd    int
     Bitmap    uint64
     blocks    *Blocks
-    /* 57 because of log() */
+    /* 57 because log() returns 0 to 56 if the size of int is 64. */
     extents   [57]*Extent
     LoadTime  int64
     Path      string
@@ -74,8 +74,9 @@ func (cola *COLA) PushDown() bool {
         return false
     }
     for i := 64; i > 0; i <<= 1 {
+        oldpath := cola.Path + "/ext_" + strconv.Itoa(i) + ".1"
+        /* If current extent does not exist... */
         if uint64(i) & cola.Bitmap == 0 {
-            oldpath := cola.Path + "/ext_" + strconv.Itoa(i) + ".1"
             newpath := cola.Path + "/ext_" + strconv.Itoa(i)
             err := Rename(oldpath, newpath)
             if err != nil {
@@ -88,17 +89,37 @@ func (cola *COLA) PushDown() bool {
             }
             break
         }
-        oldpath := cola.Path + "/ext_" + strconv.Itoa(i) + ".1"
-        newpath := cola.Path + "/ext_" + strconv.Itoa(i << 1) + ".1"
+
+        var j int = log(i)
         ext, ok := OpenExtent(oldpath)
         if !ok {
             return false
         }
-        ok = MergeExtents(newpath, cola.extents[log(i)], ext)
+        /* If merged size can fit current extent... */
+        if cola.extents[j].total + ext.total <= uint64(i) {
+            ok = MergeExtents(oldpath, cola.extents[j], ext)
+            if !ok {
+                return false
+            }
+            cola.extents[j].Free()
+            err := Rename(oldpath, cola.extents[j].path)
+            if err != nil {
+                return false
+            }
+            cola.extents[j], ok = OpenExtent(cola.extents[j].path)
+            if !ok {
+                return false
+            }
+            break
+        }
+
+        /* Otherwise, merge and push down. */
+        newpath := cola.Path + "/ext_" + strconv.Itoa(i << 1) + ".1"
+        ok = MergeExtents(newpath, cola.extents[j], ext)
         if !ok {
             return false
         }
-        cola.extents[log(i)].Free()
+        cola.extents[j].Free()
         ext.Free()
         cola.Bitmap &= ^uint64(i)
     }
