@@ -69,71 +69,58 @@ func (cola *COLA) Set(key, value []byte) bool {
 }
 
 func (cola *COLA) PushDown() bool {
-    ok := BlocksToExtent(cola.Path + "/ext_64.1", cola.blocks.records)
-    if !ok {
-        return false
-    }
-    for i := 64; i > 0; i <<= 1 {
-        oldpath := cola.Path + "/ext_" + strconv.Itoa(i) + ".1"
+    var ext *Extent = BlocksToMemExtent(cola.blocks.records)
+    var i int
+    for i = 64; i > 0; i <<= 1 {
         /* If current extent does not exist... */
         if uint64(i) & cola.Bitmap == 0 {
             if uint64(i) > cola.Bitmap {
-                ok = CompactExtent(oldpath)
-                if !ok {
-                    return false
-                }
-            }
-            newpath := cola.Path + "/ext_" + strconv.Itoa(i)
-            err := Rename(oldpath, newpath)
-            if err != nil {
-                return false
+                CompactMemExtent(ext)
             }
             cola.Bitmap |= uint64(i)
-            cola.extents[log(i)], ok = OpenExtent(newpath)
-            if !ok {
-                return false
-            }
             break
         }
-
-        var j int = log(i)
-        ext, ok := OpenExtent(oldpath)
-        if !ok {
-            return false
+        /* Merge current extent and pushed-down extent */
+        ext = MergeMemExtents(cola.extents[log(i)], ext)
+        cola.extents[log(i)].Free()
+        /* If reach the bottom... */
+        if cola.Bitmap & ^uint64(i) < uint64(i) {
+            CompactMemExtent(ext)
         }
         /* If merged size can fit current extent... */
-        if cola.extents[j].total + ext.total <= uint64(i) {
-            ok = MergeExtents(oldpath, cola.extents[j], ext)
-            if !ok {
-                return false
-            }
-            cola.extents[j].Free()
-            ext.Free()
-            err := Rename(oldpath, cola.extents[j].path)
-            if err != nil {
-                return false
-            }
-            cola.extents[j], ok = OpenExtent(cola.extents[j].path)
-            if !ok {
-                return false
-            }
+        if ext.total <= uint64(i) {
             break
         }
-
-        /* Otherwise, merge and push down. */
-        newpath := cola.Path + "/ext_" + strconv.Itoa(i << 1) + ".1"
-        ok = MergeExtents(newpath, cola.extents[j], ext)
-        if !ok {
-            return false
-        }
-        cola.extents[j].Free()
-        ext.Free()
         cola.Bitmap &= ^uint64(i)
     }
-    n, err := Write(cola.MetaFd, uint64ToBytes(cola.Bitmap))
+    /* Write the new extent to disk */
+    var path string = cola.Path + "/ext_" + strconv.Itoa(i)
+    var mode int = O_WRONLY | O_CREAT | O_TRUNC
+    fd, err := Open(path + ".1", mode, S_IRALL | S_IWALL)
+    if err != nil {
+        return false
+    }
+    n, err := Write(fd, ext.raw)
+    if err != nil || n != int(ext.size) {
+        return false
+    }
+    Close(fd)
+    err = Rename(path + ".1", path)
+    if err != nil {
+        return false
+    }
+    /* Load the new extent to memory */
+    var ok bool
+    cola.extents[log(i)], ok = OpenExtent(path)
+    if !ok {
+        return false
+    }
+    /* Update the bitmap on disk */
+    n, err = Write(cola.MetaFd, uint64ToBytes(cola.Bitmap))
     if err != nil || n != 8 {
         return false
     }
+    /* Remove useless records in blx file if it gets large */
     offset, err := Seek(cola.blocks.fd, 0, os.SEEK_CUR)
     if err != nil {
         return false

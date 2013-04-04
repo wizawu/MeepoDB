@@ -146,7 +146,18 @@ func OpenExtent(path string) (*Extent, bool) {
     return extent, true
 }
 
-func BlocksToExtent(path string, records RecordSlice) bool {
+func OpenMemExtent(buffer []byte) *Extent {
+    var size  uint64 = bytesToUint64(buffer[0 : 8])
+    var total uint64 = bytesToUint64(buffer[8 : 16])
+    return &Extent {
+        raw   : buffer,
+        size  : size,
+        total : total,
+        index : buffer[16 : 16 + 8 * total],
+    }
+}
+
+func BlocksToMemExtent(records RecordSlice) *Extent {
     sort.Sort(records)
     var total uint64 = 64
     var size uint64 = 16 + 8 * total
@@ -156,7 +167,7 @@ func BlocksToExtent(path string, records RecordSlice) bool {
         size += uint64(len(records[i].key) + len(records[i].value))
     }
 
-    /* Write to WriteBuf first */
+    /* Write to WriteBuf */
     var wbuf = NewWriteBuf(int(size))
     wbuf.Write(uint64ToBytes(size))
     wbuf.Write(uint64ToBytes(total))
@@ -168,22 +179,10 @@ func BlocksToExtent(path string, records RecordSlice) bool {
         wbuf.Write(records[i].key)
         wbuf.Write(records[i].value)
     }
-
-    /* Write to disk */
-    var mode int = O_WRONLY | O_CREAT | O_TRUNC
-    fd, err := Open(path, mode, S_IRALL | S_IWALL)
-    if err != nil {
-        return false
-    }
-    n, err := Write(fd, wbuf.ReadAll())
-    if err != nil || n != int(size) {
-        return false
-    }
-    Close(fd)
-    return true
+    return OpenMemExtent(wbuf.ReadAll())
 }
 
-func MergeExtents(path string, ext0, ext1 *Extent) bool {
+func MergeMemExtents(ext0, ext1 *Extent) *Extent {
     /* Get total and entries */
     ext := [2]*Extent{ ext0, ext1 }
     var total  uint64
@@ -225,7 +224,7 @@ func MergeExtents(path string, ext0, ext1 *Extent) bool {
     }
     size += 8 * total
 
-    /* Write to WriteBuf first */
+    /* Write to WriteBuf */
     var wbuf = NewWriteBuf(int(size))
     wbuf.Write(uint64ToBytes(size))
     wbuf.Write(uint64ToBytes(total))
@@ -247,26 +246,10 @@ func MergeExtents(path string, ext0, ext1 *Extent) bool {
         wbuf.Write(k)
         wbuf.Write(v)
     }
-
-    /* Write to disk */
-    var mode int = O_WRONLY | O_CREAT | O_TRUNC
-    fd, err := Open(path, mode, S_IRALL | S_IWALL)
-    if err != nil {
-        return false
-    }
-    n, err := Write(fd, wbuf.ReadAll())
-    if err != nil || n != int(size) {
-        return false
-    }
-    Close(fd)
-    return true
+    return OpenMemExtent(wbuf.ReadAll())
 }
 
-func CompactExtent(path string) bool {
-    ext, ok := OpenExtent(path)
-    if !ok {
-        return false
-    }
+func CompactMemExtent(ext *Extent) {
     var size uint64 = 16
     var total uint64
     var entries = make([]uint64, ext.total)
@@ -279,11 +262,11 @@ func CompactExtent(path string) bool {
         }
     }
     if total == ext.total {
-        return true
+        return
     }
-
-    /* Write to WriteBuf first */
     size += 8 * total
+
+    /* Write to WriteBuf */
     var wbuf = NewWriteBuf(int(size))
     wbuf.Write(uint64ToBytes(size))
     wbuf.Write(uint64ToBytes(total))
@@ -297,21 +280,10 @@ func CompactExtent(path string) bool {
             wbuf.Write(v)
         }
     }
-
-    /* Write to disk */
-    var mode int = O_WRONLY | O_CREAT | O_TRUNC
-    fd, err := Open(path + ".c", mode, S_IRALL | S_IWALL)
-    if err != nil {
-        return false
-    }
-    n, err := Write(fd, wbuf.ReadAll())
-    if err != nil || n != int(size) {
-        return false
-    }
-    Close(fd)
-    ext.Free()
-    err = Rename(path + ".c", path)
-    return err == nil
+    ext.raw   = wbuf.ReadAll()
+    ext.size  = size
+    ext.total = total
+    ext.index = ext.raw[16 : 16 + 8 * total]
 }
 
 /* Too slow */
