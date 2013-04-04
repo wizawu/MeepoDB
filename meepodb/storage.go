@@ -20,11 +20,6 @@
  *  IN THE SOFTWARE.
  */
 
-package main
+package meepodb
 
-import (
-    "./meepodb"
-)
 
-func main() {
-}

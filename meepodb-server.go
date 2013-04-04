@@ -22,5 +22,29 @@
 
 package main
 
+
+import (
+    "flag"
+    "strconv"
+    "./meepodb"
+)
+
+func help() {
+    println("PLEASE RUN:\tmeepodb-server [port]")
+}
+
 func main() {
+    flag.Parse()
+    if flag.NArg() != 1 {
+        help()
+        return
+    }
+    port, err := strconv.Atoi(flag.Arg(0))
+    if err != nil {
+        help()
+        return
+    }
+
+//  meepodb.Reallocate(port)
+    meepodb.StartServer(port)
 }

@@ -287,7 +287,9 @@ func CompactMemExtent(ext *Extent) {
     ext.index = ext.raw[16 : 16 + 8 * total]
 }
 
-/* Too slow */
+/*
+ *  THE FUNCTIONS BELOW ARE OF NO USE ANY MORE.
+ */
 func BlocksToExtent2(path string, records RecordSlice) bool {
     sort.Sort(records)
     var total uint64 = 64
@@ -335,7 +337,6 @@ func BlocksToExtent2(path string, records RecordSlice) bool {
     return true
 }
 
-/* Too slow */
 func MergeExtents2(path string, ext0, ext1 *Extent) bool {
     /* Get total and entries */
     ext := [2]*Extent{ ext0, ext1 }
@@ -425,7 +426,6 @@ func MergeExtents2(path string, ext0, ext1 *Extent) bool {
     return true
 }
 
-/* Too slow */
 func CompactExtent2(path string) bool {
     ext, ok := OpenExtent(path)
     if !ok {
