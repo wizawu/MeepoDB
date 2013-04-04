@@ -34,7 +34,6 @@ type COLA struct {
     Bitmap    uint64
     blocks    *Blocks
     extents   [64]*Extent
-    LoadTime  int64
     Path      string
 }
 
@@ -158,7 +157,6 @@ func NewCOLA(path string) (*COLA, bool) {
     if !ok {
         return nil, false
     }
-    cola.LoadTime = time.Now().Unix()
     cola.Path = path
     return cola, true
 }
@@ -201,7 +199,6 @@ func OpenCOLA(path string) (*COLA, bool) {
             }
         }
     }
-    cola.LoadTime = time.Now().Unix()
     cola.Path = path
     if cola.blocks.count == MAX_RECORDS {
         ok = cola.PushDown()
