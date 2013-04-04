@@ -134,6 +134,14 @@ func (cola *COLA) PushDown() bool {
     if err != nil || n != 8 {
         return false
     }
+    offset, err := Seek(cola.blocks.fd, 0, os.SEEK_CUR)
+    if err != nil {
+        return false
+    }
+    if offset < BLX_BUF_SIZE {
+        cola.blocks.bitmap = 0
+        return true
+    }
     cola.blocks.Close()
     cola.blocks, ok = NewBlocks(cola.Path + "/blx")
     return ok
