@@ -28,6 +28,26 @@ import (
     . "syscall"
 )
 
+type WriteBuf struct {
+    buffer  []byte
+    offset  int
+}
+
+func (wbuf *WriteBuf) Write(data []byte) {
+    copy(wbuf.buffer[wbuf.offset:], data)
+    wbuf.offset += len(data)
+}
+
+func (wbuf *WriteBuf) ReadAll() []byte {
+    return wbuf.buffer
+}
+
+func NewWriteBuf(size int) *WriteBuf {
+    var wbuf = new(WriteBuf)
+    wbuf.buffer = make([]byte, size)
+    return wbuf
+}
+
 type Extent struct {
     raw      []byte
     /* Size of extent */
@@ -130,6 +150,175 @@ func BlocksToExtent(path string, records RecordSlice) bool {
     sort.Sort(records)
     var total uint64 = 64
     var size uint64 = 16 + 8 * total
+    var offsets = make([]uint64, total)
+    for i := uint64(0); i < total; i++ {
+        offsets[i] = size
+        size += uint64(len(records[i].key) + len(records[i].value))
+    }
+
+    /* Write to WriteBuf first */
+    var wbuf = NewWriteBuf(int(size))
+    wbuf.Write(uint64ToBytes(size))
+    wbuf.Write(uint64ToBytes(total))
+    for i := uint64(0); i < total; i++ {
+        ent := offsets[i] << KEY_BITS + uint64(len(records[i].key))
+        wbuf.Write(uint64ToBytes(ent))
+    }
+    for i := uint64(0); i < total; i++ {
+        wbuf.Write(records[i].key)
+        wbuf.Write(records[i].value)
+    }
+
+    /* Write to disk */
+    var mode int = O_WRONLY | O_CREAT | O_TRUNC
+    fd, err := Open(path, mode, S_IRALL | S_IWALL)
+    if err != nil {
+        return false
+    }
+    n, err := Write(fd, wbuf.ReadAll())
+    if err != nil || n != int(size) {
+        return false
+    }
+    Close(fd)
+    return true
+}
+
+func MergeExtents(path string, ext0, ext1 *Extent) bool {
+    /* Get total and entries */
+    ext := [2]*Extent{ ext0, ext1 }
+    var total  uint64
+    var size   uint64 = 16
+    var limit  uint64 = ext[0].total + ext[1].total
+    var k, v   []byte
+    var iter   [2]uint64
+    entries := make([]uint64, limit)
+    flags   := make([]int, limit)
+    len_    := [2]uint64{ ext[0].total, ext[1].total }
+    for iter[0] < len_[0] && iter[1] < len_[1] {
+        flag := bytes.Compare(ext[0].Key(iter[0]), ext[1].Key(iter[1]))
+        if flag == 0 {
+            k, v = ext[1].Record(iter[1])
+            iter[0], iter[1] = iter[0] + 1, iter[1] + 1
+        } else if flag < 0 {
+            k, v = ext[0].Record(iter[0])
+            iter[0]++
+        } else {
+            k, v = ext[1].Record(iter[1])
+            iter[1]++
+        }
+        /* Here offset is not the eventual one because index length has not been
+           added to it. */
+        entries[total] = size << KEY_BITS + uint64(len(k))
+        flags[total] = flag
+        size += uint64(len(k) + len(v))
+        total++
+    }
+    for x := 0; x <= 1; x++ {
+        for ; iter[x] < len_[x]; iter[x]++ {
+            k, v = ext[x].Record(iter[x])
+            entries[total] = size << KEY_BITS + uint64(len(k))
+            /* If x = 0, flag < 0; x = 1, flag > 0. */
+            flags[total] = x * 2 - 1
+            size += uint64(len(k) + len(v))
+            total++
+        }
+    }
+    size += 8 * total
+
+    /* Write to WriteBuf first */
+    var wbuf = NewWriteBuf(int(size))
+    wbuf.Write(uint64ToBytes(size))
+    wbuf.Write(uint64ToBytes(total))
+    for i := uint64(0); i < total; i++ {
+        wbuf.Write(uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
+    }
+    iter[0], iter[1] = 0, 0
+    for i := uint64(0); i < total; i++ {
+        if flags[i] == 0 {
+            k, v = ext[1].Record(iter[1])
+            iter[0], iter[1] = iter[0] + 1, iter[1] + 1
+        }  else if flags[i] < 0 {
+            k, v = ext[0].Record(iter[0])
+            iter[0]++
+        } else {
+            k, v = ext[1].Record(iter[1])
+            iter[1]++
+        }
+        wbuf.Write(k)
+        wbuf.Write(v)
+    }
+
+    /* Write to disk */
+    var mode int = O_WRONLY | O_CREAT | O_TRUNC
+    fd, err := Open(path, mode, S_IRALL | S_IWALL)
+    if err != nil {
+        return false
+    }
+    n, err := Write(fd, wbuf.ReadAll())
+    if err != nil || n != int(size) {
+        return false
+    }
+    Close(fd)
+    return true
+}
+
+func CompactExtent(path string) bool {
+    ext, ok := OpenExtent(path)
+    if !ok {
+        return false
+    }
+    var size uint64 = 16
+    var total uint64
+    var entries = make([]uint64, ext.total)
+    for i := uint64(0); i < ext.total; i++ {
+        k, v := ext.Record(i)
+        if len(v) > 0 {
+            entries[total] = size << KEY_BITS + uint64(len(k))
+            size += uint64(len(k) + len(v))
+            total++
+        }
+    }
+    if total == ext.total {
+        return true
+    }
+
+    /* Write to WriteBuf first */
+    size += 8 * total
+    var wbuf = NewWriteBuf(int(size))
+    wbuf.Write(uint64ToBytes(size))
+    wbuf.Write(uint64ToBytes(total))
+    for i := uint64(0); i < total; i++ {
+        wbuf.Write(uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
+    }
+    for i := uint64(0); i < ext.total; i++ {
+        k, v := ext.Record(i)
+        if len(v) > 0 {
+            wbuf.Write(k)
+            wbuf.Write(v)
+        }
+    }
+
+    /* Write to disk */
+    var mode int = O_WRONLY | O_CREAT | O_TRUNC
+    fd, err := Open(path + ".c", mode, S_IRALL | S_IWALL)
+    if err != nil {
+        return false
+    }
+    n, err := Write(fd, wbuf.ReadAll())
+    if err != nil || n != int(size) {
+        return false
+    }
+    Close(fd)
+    ext.Free()
+    err = Rename(path + ".c", path)
+    return err == nil
+}
+
+/* Too slow */
+func BlocksToExtent2(path string, records RecordSlice) bool {
+    sort.Sort(records)
+    var total uint64 = 64
+    var size uint64 = 16 + 8 * total
     offsets := make([]uint64, total)
     for i := uint64(0); i < total; i++ {
         offsets[i] = size
@@ -173,7 +362,8 @@ func BlocksToExtent(path string, records RecordSlice) bool {
     return true
 }
 
-func MergeExtents(path string, ext0, ext1 *Extent) bool {
+/* Too slow */
+func MergeExtents2(path string, ext0, ext1 *Extent) bool {
     /* Get total and entries */
     ext := [2]*Extent{ ext0, ext1 }
     var total  uint64
@@ -262,7 +452,8 @@ func MergeExtents(path string, ext0, ext1 *Extent) bool {
     return true
 }
 
-func CompactExtent(path string) bool {
+/* Too slow */
+func CompactExtent2(path string) bool {
     ext, ok := OpenExtent(path)
     if !ok {
         return false
