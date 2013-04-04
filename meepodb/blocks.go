@@ -24,7 +24,6 @@ package meepodb
 
 import (
     "bytes"
-    "os/exec"
     . "syscall"
 )
 
@@ -52,9 +51,10 @@ func (recs RecordSlice) Swap(i, j int) {
 type Blocks struct {
     fd       int
     compact  bool
-    bitmap   uint64
+    count    uint64
     records  RecordSlice
     path     string
+    dict     map[string]uint64
 }
 
 func (blx *Blocks) Close() bool {
@@ -66,79 +66,76 @@ func (blx *Blocks) Records() RecordSlice {
 }
 
 func (blx *Blocks) Get(key []byte) []byte {
-    for i := uint64(0); i < 64; i++ {
-        if (uint64(1) << i) & blx.bitmap > 0 {
-            if bytes.Compare(blx.records[i].key, key) == 0 {
-                return blx.records[i].value
-            }
-        }
+    i, ok := blx.dict[string(key)]
+    if ok {
+        return blx.records[i].value
     }
     return nil
 }
 
 func (blx *Blocks) Set(key, value []byte) bool {
-    for i := uint64(0); i < 64; i++ {
-        if (uint64(1) << i) & blx.bitmap > 0 {
-            if bytes.Compare(blx.records[i].key, key) == 0 {
-                ok := writeRecord(blx.fd, i, key, value)
-                if !ok {
-                    return false
-                }
-                blx.records[i].value = make([]byte, len(value))
-                copy(blx.records[i].value, value)
-                return true
-            }
+    i, ok := blx.dict[string(key)]
+    if ok {
+        ok = writeRecord(blx.fd, i, key, value)
+        if !ok {
+            return false
         }
+        blx.records[i].value = make([]byte, len(value))
+        copy(blx.records[i].value, value)
+        return true
     }
-    for i := uint64(0); i < 64; i++ {
-        if (uint64(1) << i) & blx.bitmap == 0 {
-            ok := writeRecord(blx.fd, i, key, value)
-            if !ok {
-                return false
-            }
-            blx.records[i].key = make([]byte, len(key))
-            blx.records[i].value = make([]byte, len(value))
-            copy(blx.records[i].key, key)
-            copy(blx.records[i].value, value)
-            blx.bitmap |= uint64(1) << i
-            return true
+    if blx.count < MAX_RECORDS {
+        i = blx.count
+        ok = writeRecord(blx.fd, i, key, value)
+        if !ok {
+            return false
         }
+        blx.records[i].key = make([]byte, len(key))
+        blx.records[i].value = make([]byte, len(value))
+        copy(blx.records[i].key, key)
+        copy(blx.records[i].value, value)
+        blx.dict[string(key)] = i
+        blx.count++
+        return true
     }
     return false
 }
 
 func NewBlocks(path string) (*Blocks, bool) {
     var err error
-    blx := new(Blocks)
-    blx.path = path
+    var blx = new(Blocks)
     var mode int = O_WRONLY | O_CREAT | O_TRUNC
-    blx.fd, err = Open(blx.path, mode, S_IRALL | S_IWALL)
+    blx.fd, err = Open(path, mode, S_IRALL | S_IWALL)
     if err != nil {
-        return blx, false
+        return nil, false
     }
-    blx.records = make([]Record, 64)
+    blx.path = path
+    blx.records = make([]Record, MAX_RECORDS)
+    blx.dict = make(map[string]uint64, MAX_RECORDS)
     return blx, true
 }
 
 func OpenBlocks(path string) (*Blocks, int64) {
     var err error
-    blx := new(Blocks)
-    blx.path = path
+    var blx = new(Blocks)
     var mode int = O_RDWR | O_APPEND
-    blx.fd, err = Open(blx.path, mode, S_IRALL | S_IWALL)
+    blx.fd, err = Open(path, mode, S_IRALL | S_IWALL)
     if err != nil {
         return blx, -1
     }
 
+    blx.path = path
+    blx.records = make([]Record, MAX_RECORDS)
+    blx.dict = make(map[string]uint64, MAX_RECORDS)
     var trunc int64 = 0
-    blx.records = make([]Record, 64)
-    buffer := make([]byte, 8)
+    var buffer = make([]byte, 8)
     /* Record format:
        | index  |    K    |    V    |   key   |  value  |
        |--------|---------|---------|-------- |---------|
        | 8 bits | 24 bits | 32 bits | K bytes | V bytes |
     */
     for {
+        /* Read record head */
         n, err := Read(blx.fd, buffer)
         if n == 0 {
             break
@@ -147,46 +144,47 @@ func OpenBlocks(path string) (*Blocks, int64) {
             return blx, trunc
         }
         i, klen, vlen := decodeBlxHead(buffer)
+        /* Read key */
         blx.records[i].key = make([]byte, klen)
         n, err = Read(blx.fd, blx.records[i].key)
         if err != nil || n != int(klen) {
             return blx, trunc
         }
+        /* Read value */
         blx.records[i].value = make([]byte, vlen)
         n, err = Read(blx.fd, blx.records[i].value)
         if err != nil || n != int(vlen) {
             return blx, trunc
         }
-        i = uint64(1) << i
-        if blx.bitmap & i > 0 {
+        /* Check whether there are more than one records of the key */
+        _, ok := blx.dict[string(blx.records[i].key)]
+        if ok {
             blx.compact = true
         }
-        blx.bitmap |= i
+
+        blx.dict[string(blx.records[i].key)] = i
+        if i + 1 > blx.count {
+            blx.count = i + 1
+        }
         trunc += 8 + int64(klen + vlen)
     }
     return blx, trunc
 }
 
 func WriteBlocks(blx *Blocks) bool {
-    var path string = blx.path + ".1"
     var mode int = O_WRONLY | O_CREAT | O_TRUNC
-    fd, err := Open(path, mode, S_IRALL | S_IWALL)
+    fd, err := Open(blx.path + ".1", mode, S_IRALL | S_IWALL)
     if err != nil {
         return false
     }
-    var bitmap uint64 = blx.bitmap
-    for i := uint64(0); i < 64; i++ {
-        if bitmap & 1 == 1 {
-            ok := writeRecord(fd, i, blx.records[i].key, blx.records[i].value)
-            if !ok {
-                return false
-            }
+    for i := uint64(0); i < blx.count; i++ {
+        ok := writeRecord(fd, i, blx.records[i].key, blx.records[i].value)
+        if !ok {
+            return false
         }
-        bitmap >>= 1
     }
     Close(fd)
-    cmd := exec.Command("cp", path, blx.path)
-    err = cmd.Run()
+    err = Rename(blx.path + ".1", blx.path)
     return err == nil
 }
 
@@ -229,8 +227,8 @@ func writeRecord(fd int, i uint64, key []byte, value []byte) bool {
 }
 
 func decodeBlxHead(buffer []byte) (uint64, uint64, uint64) {
-    idx   := uint64(buffer[0])
-    klen  := uint64(buffer[1])
+    idx   := uint64(buffer[0]) << 4 + uint64(buffer[1]) >> 4
+    klen  := uint64(buffer[1]) & 15
     klen   = klen << 8 + uint64(buffer[2])
     klen   = klen << 8 + uint64(buffer[3])
     vlen  := uint64(buffer[4])
@@ -241,14 +239,5 @@ func decodeBlxHead(buffer []byte) (uint64, uint64, uint64) {
 }
 
 func encodeBlxHead(idx, klen, vlen uint64) []byte {
-    var head [8]byte
-    head[0] = byte(idx)
-    head[1] = byte(klen >> 16)
-    head[2] = byte(klen >> 8)
-    head[3] = byte(klen)
-    head[4] = byte(vlen >> 24)
-    head[5] = byte(vlen >> 16)
-    head[6] = byte(vlen >> 8)
-    head[7] = byte(vlen)
-    return head[:]
+    return uint64ToBytes(idx << 52 + klen << 32 + vlen)
 }

@@ -159,7 +159,7 @@ func OpenMemExtent(buffer []byte) *Extent {
 
 func BlocksToMemExtent(records RecordSlice) *Extent {
     sort.Sort(records)
-    var total uint64 = 64
+    var total uint64 = MAX_RECORDS
     var size uint64 = 16 + 8 * total
     var offsets = make([]uint64, total)
     for i := uint64(0); i < total; i++ {
@@ -280,6 +280,7 @@ func CompactMemExtent(ext *Extent) {
             wbuf.Write(v)
         }
     }
+    /* Update ext */
     ext.raw   = wbuf.ReadAll()
     ext.size  = size
     ext.total = total

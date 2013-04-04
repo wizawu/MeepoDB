@@ -33,18 +33,19 @@ type COLA struct {
     MetaFd    int
     Bitmap    uint64
     blocks    *Blocks
-    /* 57 because log() returns 0 to 56 if the size of int is 64. */
-    extents   [57]*Extent
+    extents   [64]*Extent
     LoadTime  int64
     Path      string
 }
 
 func (cola *COLA) Get(key []byte) []byte {
     var value []byte
+    /* Try to get from blocks */
     value = cola.blocks.Get(key)
     if value != nil {
         return value
     }
+    /* Get from extents */
     for i := 64; i > 0; i <<= 1 {
         if uint64(i) & cola.Bitmap > 0 {
             j := cola.extents[log(i)].Find(key)
@@ -62,7 +63,7 @@ func (cola *COLA) Set(key, value []byte) bool {
     if !ok {
         return false
     }
-    if cola.blocks.bitmap == ^uint64(0) {
+    if cola.blocks.count == MAX_RECORDS {
         return cola.PushDown()
     }
     return true
@@ -71,7 +72,7 @@ func (cola *COLA) Set(key, value []byte) bool {
 func (cola *COLA) PushDown() bool {
     var ext *Extent = BlocksToMemExtent(cola.blocks.records)
     var i int
-    for i = 64; i > 0; i <<= 1 {
+    for i = int(MAX_RECORDS); i > 0; i <<= 1 {
         /* If current extent does not exist... */
         if uint64(i) & cola.Bitmap == 0 {
             if uint64(i) > cola.Bitmap {
@@ -120,13 +121,14 @@ func (cola *COLA) PushDown() bool {
     if err != nil || n != 8 {
         return false
     }
-    /* Remove useless records in blx file if it gets large */
+    /* Flush blocks in memory or blx file on disk when it gets large */
     offset, err := Seek(cola.blocks.fd, 0, os.SEEK_CUR)
     if err != nil {
         return false
     }
     if offset < BLX_BUF_SIZE {
-        cola.blocks.bitmap = 0
+        cola.blocks.count = 0
+        cola.blocks.dict = make(map[string]uint64, MAX_RECORDS)
         return true
     }
     cola.blocks.Close()
@@ -140,6 +142,7 @@ func NewCOLA(path string) (*COLA, bool) {
         return nil, false
     }
     var cola = new(COLA)
+    /* meta */
     var mode int = O_WRONLY | O_CREAT
     cola.MetaFd, err = Open(path + "/meta", mode, S_IRALL | S_IWALL)
     if err != nil {
@@ -149,6 +152,7 @@ func NewCOLA(path string) (*COLA, bool) {
     if err != nil || n != 8 {
         return nil, false
     }
+    /* blx */
     var ok bool
     cola.blocks, ok = NewBlocks(path + "/blx")
     if !ok {
@@ -160,8 +164,8 @@ func NewCOLA(path string) (*COLA, bool) {
 }
 
 func OpenCOLA(path string) (*COLA, bool) {
-    var cola = new(COLA)
     var err error
+    var cola = new(COLA)
     cola.MetaFd, err = Open(path + "/meta", O_RDWR, S_IRALL | S_IWALL)
     if err != nil {
         return nil, false
@@ -173,6 +177,7 @@ func OpenCOLA(path string) (*COLA, bool) {
     if err != nil || n != 8 {
         return nil, false
     }
+    cola.Bitmap = bytesToUint64(buffer)
     /* Delete all the old bitmaps */
     Seek(cola.MetaFd, 0, os.SEEK_SET)
     n, err = Write(cola.MetaFd, buffer)
@@ -180,13 +185,13 @@ func OpenCOLA(path string) (*COLA, bool) {
         return nil, false
     }
     Ftruncate(cola.MetaFd, 8)
-
+    /* blx */
     var ok bool
-    cola.Bitmap = bytesToUint64(buffer)
     cola.blocks, ok = LoadBlocks(path + "/blx")
     if !ok {
         return nil, false
     }
+    /* Extents */
     for i := 64; i > 0; i <<= 1 {
         if uint64(i) & cola.Bitmap > 0 {
             extpath := path + "/ext_" + strconv.Itoa(i)
@@ -198,7 +203,7 @@ func OpenCOLA(path string) (*COLA, bool) {
     }
     cola.LoadTime = time.Now().Unix()
     cola.Path = path
-    if cola.blocks.bitmap == ^uint64(0) {
+    if cola.blocks.count == MAX_RECORDS {
         ok = cola.PushDown()
     }
     return cola, ok
@@ -206,7 +211,7 @@ func OpenCOLA(path string) (*COLA, bool) {
 
 func log(i int) int {
     var result int = 0
-    for i >>= 7; i > 0; i >>= 1 {
+    for i /= int(MAX_RECORDS) * 2; i > 0; i >>= 1 {
         result++
     }
     return result
