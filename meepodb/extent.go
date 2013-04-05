@@ -63,7 +63,7 @@ func (extent *Extent) Count() uint64 {
 }
 
 func (extent *Extent) Index(i uint64) (uint64, uint64) {
-    var entry  uint64 = bytesToUint64(extent.index[i * 8 : i * 8 + 8])
+    var entry  uint64 = BytesToUint64(extent.index[i * 8 : i * 8 + 8])
     var offset uint64 = entry >> KEY_BITS
     var klen   uint64 = entry & MAX_KEY_LEN
     return offset, klen
@@ -127,8 +127,8 @@ func OpenExtent(path string) (*Extent, bool) {
     if err != nil || n != 16 {
         return extent, false
     }
-    var size  uint64 = bytesToUint64(buffer[0 : 8])
-    var total uint64 = bytesToUint64(buffer[8 : 16])
+    var size  uint64 = BytesToUint64(buffer[0 : 8])
+    var total uint64 = BytesToUint64(buffer[8 : 16])
     /* Extent struct */
     raw, err := Mmap(fd, 0, int(size), PROT_READ, MAP_PRIVATE)
     Close(fd)
@@ -147,8 +147,8 @@ func OpenExtent(path string) (*Extent, bool) {
 }
 
 func OpenMemExtent(buffer []byte) *Extent {
-    var size  uint64 = bytesToUint64(buffer[0 : 8])
-    var total uint64 = bytesToUint64(buffer[8 : 16])
+    var size  uint64 = BytesToUint64(buffer[0 : 8])
+    var total uint64 = BytesToUint64(buffer[8 : 16])
     return &Extent {
         raw   : buffer,
         size  : size,
@@ -169,11 +169,11 @@ func BlocksToMemExtent(records RecordSlice) *Extent {
 
     /* Write to WriteBuf */
     var wbuf = NewWriteBuf(int(size))
-    wbuf.Write(uint64ToBytes(size))
-    wbuf.Write(uint64ToBytes(total))
+    wbuf.Write(Uint64ToBytes(size))
+    wbuf.Write(Uint64ToBytes(total))
     for i := uint64(0); i < total; i++ {
         ent := offsets[i] << KEY_BITS + uint64(len(records[i].key))
-        wbuf.Write(uint64ToBytes(ent))
+        wbuf.Write(Uint64ToBytes(ent))
     }
     for i := uint64(0); i < total; i++ {
         wbuf.Write(records[i].key)
@@ -226,10 +226,10 @@ func MergeMemExtents(ext0, ext1 *Extent) *Extent {
 
     /* Write to WriteBuf */
     var wbuf = NewWriteBuf(int(size))
-    wbuf.Write(uint64ToBytes(size))
-    wbuf.Write(uint64ToBytes(total))
+    wbuf.Write(Uint64ToBytes(size))
+    wbuf.Write(Uint64ToBytes(total))
     for i := uint64(0); i < total; i++ {
-        wbuf.Write(uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
+        wbuf.Write(Uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
     }
     iter[0], iter[1] = 0, 0
     for i := uint64(0); i < total; i++ {
@@ -268,10 +268,10 @@ func CompactMemExtent(ext *Extent) {
 
     /* Write to WriteBuf */
     var wbuf = NewWriteBuf(int(size))
-    wbuf.Write(uint64ToBytes(size))
-    wbuf.Write(uint64ToBytes(total))
+    wbuf.Write(Uint64ToBytes(size))
+    wbuf.Write(Uint64ToBytes(total))
     for i := uint64(0); i < total; i++ {
-        wbuf.Write(uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
+        wbuf.Write(Uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
     }
     for i := uint64(0); i < ext.total; i++ {
         k, v := ext.Record(i)
@@ -306,18 +306,18 @@ func BlocksToExtent2(path string, records RecordSlice) bool {
         return false
     }
     /* Write extent head */
-    n, err := Write(fd, uint64ToBytes(size))
+    n, err := Write(fd, Uint64ToBytes(size))
     if err != nil || n != 8 {
         return false
     }
-    n, err = Write(fd, uint64ToBytes(total))
+    n, err = Write(fd, Uint64ToBytes(total))
     if err != nil || n != 8 {
         return false
     }
     /* Write index */
     for i := uint64(0); i < total; i++ {
         ent := offsets[i] << KEY_BITS + uint64(len(records[i].key))
-        n, err = Write(fd, uint64ToBytes(ent))
+        n, err = Write(fd, Uint64ToBytes(ent))
         if err != nil || n != 8 {
             return false
         }
@@ -385,17 +385,17 @@ func MergeExtents2(path string, ext0, ext1 *Extent) bool {
         return false
     }
     /* Write extent head */
-    n, err := Write(fd, uint64ToBytes(size))
+    n, err := Write(fd, Uint64ToBytes(size))
     if err != nil || n != 8 {
         return false
     }
-    n, err = Write(fd, uint64ToBytes(total))
+    n, err = Write(fd, Uint64ToBytes(total))
     if err != nil || n != 8 {
         return false
     }
     /* Write index */
     for i := uint64(0); i < total; i++ {
-        n, err = Write(fd, uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
+        n, err = Write(fd, Uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
         if err != nil || n != 8 {
             return false
         }
@@ -452,17 +452,17 @@ func CompactExtent2(path string) bool {
     }
     /* Write extent head */
     size += 8 * total
-    n, err := Write(fd, uint64ToBytes(size))
+    n, err := Write(fd, Uint64ToBytes(size))
     if err != nil || n != 8 {
         return false
     }
-    n, err = Write(fd, uint64ToBytes(total))
+    n, err = Write(fd, Uint64ToBytes(total))
     if err != nil || n != 8 {
         return false
     }
     /* Write index */
     for i := uint64(0); i < total; i++ {
-        n, err = Write(fd, uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
+        n, err = Write(fd, Uint64ToBytes(entries[i] + 8 * total << KEY_BITS))
         if err != nil || n != 8 {
             return false
         }

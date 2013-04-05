@@ -25,10 +25,12 @@ package main
 
 import (
     "flag"
+    "hash/fnv"
     "net"
+    "sort"
     "strconv"
     "strings"
-    "syscall"
+    . "syscall"
     "./meepodb"
 )
 
@@ -60,7 +62,7 @@ func main() {
         for _, svr := range meepodb.SERVERS {
             if s == svr {
                 ok = true
-                println("Hi, MeepoDB on " + svr)
+                println("Hi, MeepoDB on", svr)
             }
         }
     }
@@ -68,19 +70,48 @@ func main() {
         println("Your address is not one of the servers.")
         return
     }
+    /* Calculate cluster tag */
+    sort.Sort(sort.StringSlice(meepodb.SERVERS[:]))
+    hash := fnv.New64a()
+    for _, s := range meepodb.SERVERS {
+        hash.Write([]byte(s + "&"))
+    }
+    meepodb.CLUSTER_TAG = hash.Sum64()
+    println("Cluster tag:", meepodb.CLUSTER_TAG)
 
-    /* Initialize database */
     var dir string = meepodb.DB_DIR
-    err = syscall.Chdir(dir)
+    err = Chdir(dir)
     /* If database does not exist... */
     if err != nil {
-        err = syscall.Mkdir(dir, meepodb.S_IWALL)
+        err = Mkdir(dir, meepodb.S_IRWXA)
         if err != nil {
+            println("Cannot mkdir:", dir)
+            return
+        }
+        var perm = uint32(meepodb.S_IRALL | meepodb.S_IWALL)
+        fd, err := Open(dir + "/tag", O_RDWR | O_CREAT, perm)
+        if err != nil {
+            println("Cannot create tag in", dir)
+            return
+        }
+        n, err := Write(fd, meepodb.Uint64ToBytes(meepodb.CLUSTER_TAG))
+        if err != nil || n != 8 {
             panic(err)
         }
+        Close(fd)
     }
     /* If database exists... */
-
-//  meepodb.Reallocate(port)
+    fd, err := Open(dir + "/tag", O_RDONLY, S_IREAD)
+    var buffer = make([]byte, 8)
+    n, err := Read(fd, buffer)
+    if err != nil || n != 8 {
+        panic(err)
+    }
+    Close(fd)
+    var oldtag = meepodb.BytesToUint64(buffer)
+    if oldtag != meepodb.CLUSTER_TAG {
+        println("Reallocating...")
+        meepodb.Reallocate(port)
+    }
     meepodb.StartServer(port)
 }

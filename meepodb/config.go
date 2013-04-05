@@ -44,6 +44,7 @@ const (
     S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
     S_IWALL uint32 = S_IWUSR | S_IWGRP | S_IWOTH
     S_IXALL uint32 = S_IXUSR | S_IXGRP | S_IXOTH
+    S_IRWXA uint32 = S_IRALL | S_IWALL | S_IXALL
 
     MAX_RECORDS uint64 = 1 << 12
     BLX_BUF_SIZE int64 = int64(1) << 20 * 16

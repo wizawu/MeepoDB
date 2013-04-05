@@ -239,5 +239,5 @@ func decodeBlxHead(buffer []byte) (uint64, uint64, uint64) {
 }
 
 func encodeBlxHead(idx, klen, vlen uint64) []byte {
-    return uint64ToBytes(idx << 52 + klen << 32 + vlen)
+    return Uint64ToBytes(idx << 52 + klen << 32 + vlen)
 }

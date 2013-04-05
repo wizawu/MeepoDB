@@ -172,7 +172,7 @@ func (cola *COLA) PushDown() bool {
         return false
     }
     /* Update the bitmap on disk */
-    n, err = Write(cola.MetaFd, uint64ToBytes(cola.Bitmap))
+    n, err = Write(cola.MetaFd, Uint64ToBytes(cola.Bitmap))
     if err != nil || n != 8 {
         return false
     }
@@ -203,7 +203,7 @@ func NewCOLA(path string) (*COLA, bool) {
     if err != nil {
         return nil, false
     }
-    n, err := Write(cola.MetaFd, uint64ToBytes(cola.Bitmap))
+    n, err := Write(cola.MetaFd, Uint64ToBytes(cola.Bitmap))
     if err != nil || n != 8 {
         return nil, false
     }
@@ -231,7 +231,7 @@ func OpenCOLA(path string) (*COLA, bool) {
     if err != nil || n != 8 {
         return nil, false
     }
-    cola.Bitmap = bytesToUint64(buffer)
+    cola.Bitmap = BytesToUint64(buffer)
     /* Delete all the old bitmaps */
     Seek(cola.MetaFd, 0, os.SEEK_SET)
     n, err = Write(cola.MetaFd, buffer)
