@@ -288,7 +288,7 @@ func CompactMemExtent(ext *Extent) {
 }
 
 /*
- *  THE FUNCTIONS BELOW ARE OF NO USE ANY MORE.
+ *  THE FUNCTIONS BELOW ARE OF NO USE ANYMORE.
  */
 func BlocksToExtent2(path string, records RecordSlice) bool {
     sort.Sort(records)

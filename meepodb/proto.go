@@ -50,6 +50,7 @@ const (
     MGET_CMD = "MGET"
     MSET_CMD = "MSET"
     MDEL_CMD = "MDEL"
+    QUIT_CMD = "QUIT"
 
     GET_CODE  byte = 0x01
     SET_CODE  byte = 0x02
@@ -60,6 +61,11 @@ const (
     MGET_CODE byte = 0x11
     MSET_CODE byte = 0x12
     MDEL_CODE byte = 0x13
+    QUIT_CODE byte = 0x21
+    WORK_CODE byte = 0x22
+    RALC_CODE byte = 0x23
+    CLAR_CODE byte = 0x24
+    ERR_CODE  byte = 0x3F
 )
 
 /* Check whether a command is 'MXXX'. */

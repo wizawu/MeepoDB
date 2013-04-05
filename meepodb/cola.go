@@ -24,7 +24,6 @@ package meepodb
 
 import (
     "os"
-    "time"
     "strconv"
     . "syscall"
 )
@@ -35,6 +34,63 @@ type COLA struct {
     blocks    *Blocks
     extents   [64]*Extent
     Path      string
+}
+
+func (cola *COLA) Close() {
+    cola.blocks.Close()
+    for i := int(MAX_RECORDS); i > 0; i <<= 1 {
+        if uint64(i) & cola.Bitmap > 0 {
+            cola.extents[log(i)].Free()
+        }
+    }
+    Close(cola.MetaFd)
+}
+
+func (cola *COLA) Keys() []string {
+    var exist = make(map[string]bool, MAX_RECORDS)
+    var delt = make(map[string]bool, MAX_RECORDS)
+    /* Traverse blocks */
+    for i := uint64(0); i < cola.blocks.count; i++ {
+        if len(cola.blocks.records[i].value) == 0 {
+            delt[string(cola.blocks.records[i].key)] = true
+        } else {
+            exist[string(cola.blocks.records[i].key)] = true
+        }
+    }
+    /* Traverse extents */
+    for i := int(MAX_RECORDS); i > 0; i <<= 1 {
+        if uint64(i) & cola.Bitmap > 0 {
+            var j int = log(i)
+            var total = cola.extents[j].Count()
+            for t := uint64(0); t < total; t++ {
+                k, v := cola.extents[j].Record(t)
+                s := string(k)
+                if _, ok := exist[s]; ok {
+                    continue
+                }
+                if _, ok := delt[s]; ok {
+                    continue
+                }
+                if len(v) == 0 {
+                    delt[s] = true
+                } else {
+                    exist[s] = true
+                }
+            }
+        }
+    }
+    /* Return existent keys */
+    var keys = make([]string, len(exist))
+    var i int = 0
+    for k, _ := range exist {
+        keys[i] = k
+        i++
+    }
+    return keys[:]
+}
+
+func (cola *COLA) Size() uint64 {
+    return uint64(len(cola.Keys()))
 }
 
 func (cola *COLA) Get(key []byte) []byte {
