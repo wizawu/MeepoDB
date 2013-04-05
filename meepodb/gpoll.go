@@ -36,26 +36,26 @@ type GpollLoop struct {
 func GpollListen(addr string, maxConns int) (*GpollLoop, bool) {
     raddr, err := net.ResolveTCPAddr("tcp", addr)
     if err != nil {
-        return new(GpollLoop), false
+        return nil, false
     }
     listen, err := net.ListenTCP("tcp", raddr)
     if err != nil {
-        return new(GpollLoop), false
+        return nil, false
     }
     file, err := listen.File()
     if err != nil {
-        return new(GpollLoop), false
+        return nil, false
     }
     fd := int32(file.Fd())
 
     state, ok := GpollCreate(maxConns + 1024)
     if !ok {
-        return new(GpollLoop), false
+        return nil, false
     }
     ev := EpollEvent{ Events: EPOLLIN, Fd: fd }
     ok = GpollAdd(state, &ev)
     if !ok {
-        return new(GpollLoop), false
+        return nil, false
     }
     return &GpollLoop{ fd, state, 0 }, true
 }

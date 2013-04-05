@@ -32,7 +32,7 @@ type GpollState struct {
 func GpollCreate(maxEvents int) (*GpollState, bool) {
     epfd, err := EpollCreate1(0)
     if err != nil {
-        return new(GpollState), false
+        return nil, false
     }
     events := make([]EpollEvent, maxEvents)
     return &GpollState{ epfd, events }, true

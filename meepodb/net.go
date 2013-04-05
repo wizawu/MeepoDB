@@ -22,8 +22,43 @@
 
 package meepodb
 
+import (
+    "strconv"
+    . "syscall"
+)
+
 var CLUSTER_TAG uint64
 
-func StartServer(port int) {
+type request struct {
+    
+}
 
+
+func StartServer(port int) {
+    var addr string = "127.0.0.1:" + strconv.Itoa(port)
+    gpoll, ok := GpollListen(addr, MAX_CONNS)
+    if !ok {
+        println("GpollListen on", addr, "failed.")
+        return
+    }
+    for {
+        gpoll.Wait()
+        if gpoll.Ready == -1 {
+            println("GpollWait failed.")
+            return
+        }
+        for _, ev := range gpoll.State.Events[:gpoll.Ready] {
+            if ev.Fd == gpoll.Lfd {
+                ok = gpoll.AddEvent()
+                if !ok {
+                    println("Gpoll.AddEvent failed.")
+                    return
+                }
+            } else {
+            }
+        }
+    }
+}
+
+func ReadReq() {
 }
