@@ -22,4 +22,6 @@
 
 package meepodb
 
-func StartServer(
+func StartServer(port int) {
+
+}

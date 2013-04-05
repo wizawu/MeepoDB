@@ -26,6 +26,20 @@ import (
     . "syscall"
 )
 
+/* ========================================================================= *
+ *                             USER SETTINGS                                 */
+
+var SERVERS = [...]string {
+    "192.168.3.139:6631",
+}
+
+const DB_DIR string = "/home/wiza/data/meepodb"
+
+/* ========================================================================= */
+
+/*
+ *  DO NOT MODIFY THE VALUES BELOW IF YOU HAVE NO IDEA WHAT THEY ARE.
+ */
 const (
     S_IRALL uint32 = S_IRUSR | S_IRGRP | S_IROTH
     S_IWALL uint32 = S_IWUSR | S_IWGRP | S_IWOTH
@@ -33,4 +47,6 @@ const (
 
     MAX_RECORDS uint64 = 1 << 12
     BLX_BUF_SIZE int64 = int64(1) << 20 * 16
+
+    MAX_CONNS int = 10000
 )
