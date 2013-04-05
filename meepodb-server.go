@@ -25,7 +25,10 @@ package main
 
 import (
     "flag"
+    "net"
     "strconv"
+    "strings"
+    "syscall"
     "./meepodb"
 )
 
@@ -34,6 +37,7 @@ func help() {
 }
 
 func main() {
+    /* Get port number from args */
     flag.Parse()
     if flag.NArg() != 1 {
         help()
@@ -43,6 +47,36 @@ func main() {
     if err != nil {
         help()
         return
+    }
+    /* Check whether the address is defined in config.go */
+    addrs, err := net.InterfaceAddrs()
+    if err != nil {
+        println("Check network interfaces.")
+        return
+    }
+    var ok bool = false
+    for _, addr := range addrs {
+        s := strings.Split(addr.String(), "/")[0] + ":" + flag.Arg(0)
+        for _, svr := range meepodb.SERVERS {
+            if s == svr {
+                ok = true
+                println("Hi, MeepoDB on " + svr)
+            }
+        }
+    }
+    if !ok {
+        println("Your address is not one of the servers.")
+        return
+    }
+
+    var dir string = meepodb.DB_DIR
+    err = syscall.Chdir(dir)
+    if err != nil {
+        /* If db does not exist... */
+        err = syscall.Mkdir(dir, meepodb.S_IWALL)
+        if err != nil {
+            panic(err)
+        }
     }
 
 //  meepodb.Reallocate(port)
