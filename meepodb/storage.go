@@ -22,4 +22,111 @@
 
 package meepodb
 
+import (
+    "os"
+    . "syscall"
+)
 
+type Storage struct {
+    colas map[string](*COLA)
+}
+
+func NewStorage() *Storage {
+    var strg = new(Storage)
+    strg.colas = make(map[string](*COLA), 16)
+    return strg
+}
+
+func (strg *Storage) COLA(name []byte) *COLA {
+    var str = string(name)
+    cola, ok := strg.colas[str]
+    if !ok {
+        cola, ok = OpenCOLA(DB_DIR + "/" + str)
+        if !ok {
+            cola, ok = NewCOLA(DB_DIR + "/" + str)
+            if !ok {
+                return nil
+            }
+        }
+        strg.colas[str] = cola
+    }
+    return cola
+}
+
+func (strg *Storage) ExistentCOLA(name []byte) *COLA {
+    var str = string(name)
+    cola, ok := strg.colas[str]
+    if !ok {
+        cola, ok = OpenCOLA(DB_DIR + "/" + str)
+        if !ok {
+            return nil
+        }
+        strg.colas[str] = cola
+    }
+    return cola
+}
+
+func (strg *Storage) Get(table, key []byte) []byte {
+    var cola = strg.ExistentCOLA(table)
+    if cola == nil {
+        return nil
+    }
+    return cola.Get(key)
+}
+
+func (strg *Storage) Set(table, key, value []byte) bool {
+    var cola = strg.COLA(table)
+    if cola == nil {
+        return false
+    }
+    return cola.Set(key, value)
+}
+
+func (strg *Storage) Size(table []byte) uint64 {
+    var cola = strg.ExistentCOLA(table)
+    if cola == nil {
+        return 0
+    }
+    return cola.Size()
+}
+
+func (strg *Storage) Keys(table []byte) []string {
+    var cola = strg.ExistentCOLA(table)
+    if cola == nil {
+        return nil
+    }
+    return cola.Keys()
+}
+
+func (strg *Storage) Drop(table []byte) bool {
+    var cola = strg.ExistentCOLA(table)
+    if cola == nil {
+        return true
+    }
+    cola.Close()
+    delete(strg.colas, string(table))
+    return os.RemoveAll(DB_DIR + "/" + string(table)) == nil
+}
+
+func (strg *Storage) OpenAll() bool {
+    fd, err := Open(DB_DIR, O_RDONLY, S_IREAD)
+    if err != nil {
+        return false
+    }
+    dir := os.NewFile(uintptr(fd), DB_DIR)
+    names, err := dir.Readdirnames(MAX_TABLES)
+    if err != nil {
+        return false
+    }
+    for _, name := range names {
+        if name != "tag" {
+            cola, ok := OpenCOLA(DB_DIR + "/" + name)
+            if ok {
+                strg.colas[name] = cola
+            }
+        }
+    }
+    dir.Close()
+    Close(fd)
+    return true
+}

@@ -30,7 +30,10 @@ import (
 var CLUSTER_TAG uint64
 
 type request struct {
-    
+    sockfd  int
+    code    byte
+    keys    []([]byte)
+    values  []([]byte)
 }
 
 
@@ -60,5 +63,5 @@ func StartServer(port int) {
     }
 }
 
-func ReadReq() {
+func readRequest() {
 }

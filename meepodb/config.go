@@ -33,7 +33,7 @@ var SERVERS = [...]string {
     "192.168.3.139:6631",
 }
 
-const DB_DIR string = "/home/wiza/data/meepodb"
+const DB_DIR string = "/home/wiza/data"
 
 /* ========================================================================= */
 
@@ -50,4 +50,5 @@ const (
     BLX_BUF_SIZE int64 = int64(1) << 20 * 16
 
     MAX_CONNS int = 10000
+    MAX_TABLES int = 10000
 )

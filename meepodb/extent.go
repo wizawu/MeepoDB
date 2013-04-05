@@ -50,10 +50,8 @@ func NewWriteBuf(size int) *WriteBuf {
 
 type Extent struct {
     raw      []byte
-    /* Size of extent */
-    size     uint64
-    /* Number of records */
-    total    uint64
+    size     uint64         /* Size of extent */
+    total    uint64         /* Number of records */
     index    []byte
     path     string
 }

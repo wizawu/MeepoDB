@@ -63,8 +63,9 @@ const (
     MDEL_CODE byte = 0x13
     QUIT_CODE byte = 0x21
     WORK_CODE byte = 0x22
-    RALC_CODE byte = 0x23
-    CLAR_CODE byte = 0x24
+    RALC_CODE byte = 0x23       /* Reallocate  */
+    DSTR_CODE byte = 0x24       /* Distribute  */
+    EXPL_CODE byte = 0x25       /* Expel       */
     ERR_CODE  byte = 0x3F
 )
 
