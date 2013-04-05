@@ -69,15 +69,17 @@ func main() {
         return
     }
 
+    /* Initialize database */
     var dir string = meepodb.DB_DIR
     err = syscall.Chdir(dir)
+    /* If database does not exist... */
     if err != nil {
-        /* If db does not exist... */
         err = syscall.Mkdir(dir, meepodb.S_IWALL)
         if err != nil {
             panic(err)
         }
     }
+    /* If database exists... */
 
 //  meepodb.Reallocate(port)
     meepodb.StartServer(port)

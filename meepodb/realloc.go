@@ -22,8 +22,5 @@
 
 package meepodb
 
-var CLUSTER_TAG uint64
-
-func StartServer(port int) {
-
+func Reallocate(port int) {
 }
