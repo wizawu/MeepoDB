@@ -41,17 +41,6 @@ const (
     MAX_KEY_LEN        = uint64(1) << KEY_BITS - 1
     MAX_VALUE_LEN      = uint64(1) << VALUE_BITS -1
 
-    GET_CMD  = "GET"
-    SET_CMD  = "SET"
-    DEL_CMD  = "DEL"
-    SIZE_CMD = "SIZE"
-    KEYS_CMD = "KEYS"
-    DROP_CMD = "DROP"
-    MGET_CMD = "MGET"
-    MSET_CMD = "MSET"
-    MDEL_CMD = "MDEL"
-    QUIT_CMD = "QUIT"
-
     GET_CODE  byte = 0x01
     SET_CODE  byte = 0x02
     DEL_CODE  byte = 0x03
