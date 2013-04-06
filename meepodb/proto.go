@@ -86,6 +86,40 @@ func DecodeHead(head []byte) (byte, uint64, uint64, uint64) {
     return byte(x), tlen, klen, vlen
 }
 
+func EncodeGet(table, key []byte) []byte {
+    var tlen   = uint64(len(table))
+    var klen   = uint64(len(key))
+    var result = make([]byte, 8 + tlen + klen)
+    copy(result, EncodeHead(GET_CODE, tlen, klen, 0))
+    copy(result[8:], table)
+    copy(result[8 + tlen :], key)
+    return result
+}
+
+func EncodeSet(table, key, value []byte) []byte {
+    var tlen   = uint64(len(table))
+    var klen   = uint64(len(key))
+    var vlen   = uint64(len(value))
+    var result = make([]byte, 8 + tlen + klen + vlen)
+    copy(result, EncodeHead(SET_CODE, tlen, klen, vlen))
+    copy(result[8:], table)
+    copy(result[8 + tlen :], key)
+    copy(result[8 + tlen + klen :], value)
+    return result
+}
+
+func EncodeDrop(table []byte) []byte {
+    var tlen   = uint64(len(table))
+    var result = make([]byte, 8 + tlen)
+    copy(result, EncodeHead(DROP_CODE, tlen, 0, 0))
+    copy(result[8:], table)
+    return result
+}
+
+func EncodeSym(code byte) []byte {
+    return EncodeHead(code, 0, 0, 0)
+}
+
 func BytesToUint64(bytes []byte) uint64 {
     var x uint64
     for _, b := range bytes[0 : 8] {

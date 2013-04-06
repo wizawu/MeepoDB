@@ -25,15 +25,15 @@ package main
 import (
     "bufio"
     "bytes"
-    "flag"
+    "fmt"
     "net"
     "os"
     "sort"
     "./meepodb"
 )
 
-var numberOfServers = len(meepodb.SERVERS[:])
-var servers = make([](*net.TCPConn), numberOfServers)
+var numberOfServers = uint64(len(meepodb.SERVERS[:]))
+var servers = make([](net.Conn), numberOfServers)
 var stdin = bufio.NewReader(os.Stdin)
 var lineNumber int = 1
 
@@ -66,19 +66,154 @@ func ReadTokensInLine() []([]byte) {
     return result[:count]
 }
 
-func get(table, key, value []byte) {
+func sendRequest(i uint64, request []byte) bool {
+    var err error
+    if servers[i] != nil {
+        _, err = servers[i].Write(request)
+        if err != nil {
+            println("* Failed on", meepodb.SERVERS[i])
+            return false
+        }
+    } else {
+        /* Try dialing again */
+        servers[i], err = net.Dial("tcp", meepodb.SERVERS[i])
+        if err == nil {
+            if conn, ok := servers[i].(*net.TCPConn); ok {
+                conn.SetKeepAlive(true)
+                conn.SetNoDelay(true)
+            }
+            _, err = servers[i].Write(request)
+            if err != nil {
+                println("* Failed on", meepodb.SERVERS[i])
+                return false
+            }
+        } else {
+            println("* Failed on", meepodb.SERVERS[i])
+            return false
+        }
+    }
+    return true
+}
+
+func readGetResult(i uint64, request []byte) ([]byte, bool) {
+    var ok bool = sendRequest(i, request)
+    if !ok {
+        return nil, false
+    }
+    var conn = servers[i]
+    var head = make([]byte, 8)
+    n, err := conn.Read(head)
+    if err != nil || n != 8 {
+        return nil, false
+    }
+    code, _, _, vlen := meepodb.DecodeHead(head)
+    if code == meepodb.ERR_CODE {
+        return nil, false
+    }
+    if vlen == 0 {
+        return []byte(""), true
+    }
+    var value = make([]byte, vlen)
+    n, err = conn.Read(value)
+    if err != nil || n != int(vlen) {
+        return nil, false
+    }
+    return value, true
+}
+
+func get(table, key []byte) {
+    var ok bool
+    var v1, v2, v3 []byte
+    var request []byte = meepodb.EncodeGet(table, key)
+    var i uint64 = meepodb.HashTableKey(table, key)
+    println("Hash location:", i)
+    i = i % numberOfServers
+    var i2 = (i + 1) % numberOfServers
+    var i3 = (i + 2) % numberOfServers
+    v1, ok = readGetResult(i, request)
+    if ok {
+        /* If v1 ok... */
+        if meepodb.REPLICA == false {
+            fmt.Printf("%s\n", v1)
+        } else {
+            v2, ok = readGetResult(i2, request)
+            if ok {
+                /* If v1 == v2... */
+                if bytes.Compare(v1, v2) == 0 {
+                    fmt.Printf("%s\n", v1)
+                } else {
+                    v3, ok = readGetResult(i3, request)
+                    if ok {
+                        if bytes.Compare(v1, v3) == 0 || bytes.Compare(v2, v3) == 0 {
+                            fmt.Printf("%s\n", v3)
+                        } else {
+                            fmt.Printf("%s\n", v1)
+                        }
+                    } else {
+                        /* If v3 not ok... */
+                        println("* Failed on", meepodb.SERVERS[i3])
+                        fmt.Printf("%s\n", v1)
+                    }
+                }
+            } else {
+                /* If v2 not ok... */
+                println("* Failed on", meepodb.SERVERS[i2])
+                fmt.Printf("%s\n", v1)
+            }
+        }
+    } else {
+        /* If v1 not ok... */
+        println("* Failed on", meepodb.SERVERS[i])
+        if meepodb.REPLICA {
+            v2, ok = readGetResult(i2, request)
+            if ok {
+                /* If v2 ok... */
+                fmt.Printf("%s\n", v2)
+            } else {
+                println("* Failed on", meepodb.SERVERS[i2])
+                v3, ok = readGetResult(i3, request)
+                if ok {
+                    /* If v3 ok... */
+                    fmt.Printf("%s\n", v3)
+                } else {
+                    println("* Failed on", meepodb.SERVERS[i3])
+                }
+            }
+        }
+    }
 }
 
 func set(table, key, value []byte) {
-    var location uint64 = meepodb.HashTableKey(table, key)
-    println("Hash location:", location)
-
+    var request []byte = meepodb.EncodeSet(table, key, value)
+    var i uint64 = meepodb.HashTableKey(table, key)
+    println("Hash location:", i)
+    i = i % numberOfServers
+    sendRequest(i, request)
+    if meepodb.REPLICA == false {
+        return
+    }
+    /* Replica 1 */
+    i = (i + 1) % numberOfServers
+    sendRequest(i, request)
+    /* Replica 2 */
+    i = (i + 1) % numberOfServers
+    sendRequest(i, request)
 }
 
 func drop(table []byte) {
+    var request []byte = meepodb.EncodeDrop(table)
+    for i := range servers {
+        sendRequest(uint64(i), request)
+    }
 }
 
 func quit() {
+    var request []byte = meepodb.EncodeSym(meepodb.QUIT_CODE)
+    for i := range servers {
+        if servers[i] != nil {
+            servers[i].Write(request)
+        }
+    }
 }
 
 func main() {
@@ -92,6 +227,10 @@ func main() {
     for i, _ := range servers {
         servers[i], err = net.Dial("tcp", meepodb.SERVERS[i])
         if err == nil {
+            if conn, ok := servers[i].(*net.TCPConn); ok {
+                conn.SetKeepAlive(true)
+                conn.SetNoDelay(true)
+            }
             println("Connected to", meepodb.SERVERS[i])
         } else {
             println("Cannot connected to", meepodb.SERVERS[i])
@@ -113,8 +252,8 @@ func main() {
         /* Check command format */
         switch string(tokens[0]) {
             case "GET":
-                if len(tokens) != 4 {
-                    println("*", "GET [TABLE] [KEY] [VALUE]")
+                if len(tokens) != 3 {
+                    println("*", "GET [TABLE] [KEY]")
                     continue
                 }
             case "SET":
@@ -143,7 +282,7 @@ func main() {
         }
         /* Send command */
         switch string(tokens[0]) {
-            case "GET"  : get(tokens[1], tokens[2], tokens[3])
+            case "GET"  : get(tokens[1], tokens[2])
             case "SET"  : set(tokens[1], tokens[2], tokens[3])
             case "DEL"  : set(tokens[1], tokens[2], []byte(""))
             case "DROP" : drop(tokens[1])

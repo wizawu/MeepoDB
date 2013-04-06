@@ -22,5 +22,18 @@
 
 package meepodb
 
+import (
+    "hash/fnv"
+    "strconv"
+)
+
 func Reallocate(port int) {
+}
+
+func HashTableKey(table, key []byte) uint64 {
+    hash := fnv.New64a()
+    hash.Write(table)
+    hash.Write([]byte(strconv.Itoa(len(SERVERS))))
+    hash.Write(key)
+    return hash.Sum64()
 }

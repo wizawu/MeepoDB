@@ -24,7 +24,6 @@ package meepodb
 
 import (
 //  "bytes"
-    "hash/fnv"
     "strconv"
 //  . "syscall"
 )
@@ -56,12 +55,4 @@ func StartServer(port int) {
             }
         }
     }
-}
-
-func HashTableKey(table, key []byte) uint64 {
-    hash := fnv.New64a()
-    hash.Write(table)
-    hash.Write([]byte(strconv.Itoa(len(SERVERS))))
-    hash.Write(key)
-    return hash.Sum64()
 }

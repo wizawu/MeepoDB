@@ -75,6 +75,10 @@ func (strg *Storage) Get(table, key []byte) []byte {
 }
 
 func (strg *Storage) Set(table, key, value []byte) bool {
+    /* Delete a non-existent key always returns true */
+    if len(value) == 0 && len(strg.Get(table, key)) == 0 {
+        return true
+    }
     var cola = strg.COLA(table)
     if cola == nil {
         return false
