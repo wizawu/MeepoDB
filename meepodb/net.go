@@ -23,19 +23,12 @@
 package meepodb
 
 import (
+//  "bytes"
     "strconv"
-    . "syscall"
+//  . "syscall"
 )
 
 var CLUSTER_TAG uint64
-
-type request struct {
-    sockfd  int
-    code    byte
-    keys    []([]byte)
-    values  []([]byte)
-}
-
 
 func StartServer(port int) {
     var addr string = "127.0.0.1:" + strconv.Itoa(port)
@@ -58,10 +51,8 @@ func StartServer(port int) {
                     return
                 }
             } else {
+//              var sockfd = int(ev.Fd)
             }
         }
     }
-}
-
-func readRequest() {
 }

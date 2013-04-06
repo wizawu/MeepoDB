@@ -61,11 +61,12 @@ const (
     MGET_CODE byte = 0x11
     MSET_CODE byte = 0x12
     MDEL_CODE byte = 0x13
-    QUIT_CODE byte = 0x21
-    WORK_CODE byte = 0x22
-    RALC_CODE byte = 0x23       /* Reallocate  */
-    DSTR_CODE byte = 0x24       /* Distribute  */
-    EXPL_CODE byte = 0x25       /* Expel       */
+    QUIT_CODE byte = 0x21       /* Client quits */
+    WORK_CODE byte = 0x22       /* Server ready */
+    RALC_CODE byte = 0x23       /* Reallocate   */
+    DSTR_CODE byte = 0x24       /* Distribute   */
+    EXPL_CODE byte = 0x25       /* Expel        */
+    OK_CODE   byte = 0x30
     ERR_CODE  byte = 0x3F
 )
 

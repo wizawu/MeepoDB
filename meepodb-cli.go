@@ -23,8 +23,60 @@
 package main
 
 import (
+    "bufio"
+    "bytes"
+    "flag"
+    "os"
     "./meepodb"
 )
 
+var stdin = bufio.NewReader(os.Stdin)
+var lineNumber int = 1
+
+func ReadTokensInLine() []([]byte) {
+    line, err := stdin.ReadBytes('\n')
+    if err != nil {
+        return nil
+    }
+    line = line[: len(line) - 1]
+    tokenizer := bufio.NewReader(bytes.NewBuffer(line))
+    result := make([]([]byte), meepodb.MAX_MGET_KEYS + 2)
+    var count int = 0
+    for {
+        token, err := tokenizer.ReadBytes(' ')
+        if err == nil {
+            token = token[: len(token) - 1]
+        }
+        if len(token) > 1 {
+            result[count] = token
+            count++
+        }
+        if err != nil {
+            break
+        }
+    }
+    return result[:count]
+}
+
+func help() {
+    println("PLEASE RUN:\tmeepodb-cli [IP:port]")
+}
+
 func main() {
+    flag.Parse()
+    if flag.NArg() != 1 {
+        help()
+        return
+    }
+    println("Connect to MeepoDB on", flag.Arg(0))
+    println("\nMeepoDB Shell")
+    for {
+        print(lineNumber, "> ")
+        tokens := ReadTokensInLine()
+        for _, t := range tokens {
+            print(string(t), "$")
+        }
+        println()
+        lineNumber++
+    }
 }
