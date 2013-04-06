@@ -23,15 +23,12 @@
 package meepodb
 
 import (
-//  "bytes"
-    "strconv"
-//  . "syscall"
+    . "syscall"
 )
 
 var CLUSTER_TAG uint64
 
-func StartServer(port int) {
-    var addr string = "127.0.0.1:" + strconv.Itoa(port)
+func StartServer(addr string) {
     gpoll, ok := GpollListen(addr, MAX_CONNS)
     if !ok {
         println("GpollListen on", addr, "failed.")
@@ -43,7 +40,7 @@ func StartServer(port int) {
             println("GpollWait failed.")
             return
         }
-        for _, ev := range gpoll.State.Events[:gpoll.Ready] {
+        for i, ev := range gpoll.State.Events[:gpoll.Ready] {
             if ev.Fd == gpoll.Lfd {
                 ok = gpoll.AddEvent()
                 if !ok {
@@ -51,8 +48,65 @@ func StartServer(port int) {
                     return
                 }
             } else {
-//              var sockfd = int(ev.Fd)
+                var sockfd = int(ev.Fd)
+                code, tab, k, v := readRequest(sockfd)
+                if code == ERR_CODE {
+                    continue
+                }
+                switch code {
+                    case GET_CODE:
+                        println("GET", string(tab), string(k))
+                    case SET_CODE:
+                        println("SET", string(tab), string(k), string(v))
+                    case DROP_CODE:
+                        println("DROP", string(tab))
+                    case QUIT_CODE:
+                        gpoll.DelEvent(&gpoll.State.Events[i])
+                        Close(sockfd)
+                        println("QUIT")
+                    default:
+                        println("Unknown request")
+                }
             }
         }
     }
+}
+
+func readRequest(sockfd int) (byte, []byte, []byte, []byte) {
+    var head = make([]byte, 8)
+    n, err := Read(sockfd, head)
+    if err != nil || n != 8 {
+        return ERR_CODE, nil, nil, nil
+    }
+    code, tlen, klen, vlen := DecodeHead(head)
+    switch code {
+        case GET_CODE:
+            buffer := receiveN(sockfd, tlen + klen)
+            if buffer != nil {
+                return GET_CODE, buffer[:tlen], buffer[tlen:], nil
+            }
+        case SET_CODE:
+            buffer := receiveN(sockfd, tlen + klen + vlen)
+            if buffer != nil {
+                return SET_CODE, buffer[:tlen], buffer[tlen : tlen + klen],
+                       buffer[tlen + klen :]
+            }
+        case DROP_CODE:
+            buffer := receiveN(sockfd, tlen)
+            if buffer != nil {
+                return DROP_CODE, buffer, nil, nil
+            }
+        case QUIT_CODE:
+            return QUIT_CODE, nil, nil, nil
+    }
+    return ERR_CODE, nil, nil, nil
+}
+
+func receiveN(sockfd int, n uint64) []byte {
+    var buffer = make([]byte, n)
+    m, err := Read(sockfd, buffer)
+    if err != nil || m != int(n) {
+        return nil
+    }
+    return buffer
 }

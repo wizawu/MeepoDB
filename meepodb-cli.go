@@ -29,11 +29,12 @@ import (
     "net"
     "os"
     "sort"
+    . "syscall"
     "./meepodb"
 )
 
 var numberOfServers = uint64(len(meepodb.SERVERS[:]))
-var servers = make([](net.Conn), numberOfServers)
+var servers = make([]int, numberOfServers)
 var stdin = bufio.NewReader(os.Stdin)
 var lineNumber int = 1
 
@@ -67,30 +68,10 @@ func ReadTokensInLine() []([]byte) {
 }
 
 func sendRequest(i uint64, request []byte) bool {
-    var err error
-    if servers[i] != nil {
-        _, err = servers[i].Write(request)
-        if err != nil {
-            println("* Failed on", meepodb.SERVERS[i])
-            return false
-        }
-    } else {
-        /* Try dialing again */
-        servers[i], err = net.Dial("tcp", meepodb.SERVERS[i])
-        if err == nil {
-            if conn, ok := servers[i].(*net.TCPConn); ok {
-                conn.SetKeepAlive(true)
-                conn.SetNoDelay(true)
-            }
-            _, err = servers[i].Write(request)
-            if err != nil {
-                println("* Failed on", meepodb.SERVERS[i])
-                return false
-            }
-        } else {
-            println("* Failed on", meepodb.SERVERS[i])
-            return false
-        }
+    n, err := Write(servers[i], request)
+    if err != nil || n != len(request) {
+        println("* Failed on", meepodb.SERVERS[i])
+        return false
     }
     return true
 }
@@ -100,9 +81,8 @@ func readGetResult(i uint64, request []byte) ([]byte, bool) {
     if !ok {
         return nil, false
     }
-    var conn = servers[i]
     var head = make([]byte, 8)
-    n, err := conn.Read(head)
+    n, err := Read(servers[i], head)
     if err != nil || n != 8 {
         return nil, false
     }
@@ -114,7 +94,7 @@ func readGetResult(i uint64, request []byte) ([]byte, bool) {
         return []byte(""), true
     }
     var value = make([]byte, vlen)
-    n, err = conn.Read(value)
+    n, err = Read(servers[i], value)
     if err != nil || n != int(vlen) {
         return nil, false
     }
@@ -209,10 +189,9 @@ func drop(table []byte) {
 
 func quit() {
     var request []byte = meepodb.EncodeSym(meepodb.QUIT_CODE)
-    for i := range servers {
-        if servers[i] != nil {
-            servers[i].Write(request)
-        }
+    for _, fd := range servers {
+        Write(fd, request)
+        Close(fd)
     }
 }
 
@@ -223,15 +202,15 @@ func main() {
         meepodb.REPLICA = false
     }
     /* Connect to servers */
-    var err error
     for i, _ := range servers {
-        servers[i], err = net.Dial("tcp", meepodb.SERVERS[i])
+        addr, err := net.ResolveTCPAddr("tcp", meepodb.SERVERS[i])
+        conn, err := net.DialTCP("tcp", nil, addr)
         if err == nil {
-            if conn, ok := servers[i].(*net.TCPConn); ok {
-                conn.SetKeepAlive(true)
-                conn.SetNoDelay(true)
-            }
             println("Connected to", meepodb.SERVERS[i])
+            conn.SetKeepAlive(true)
+            conn.SetNoDelay(true)
+            file, _ := conn.File()
+            servers[i] = int(file.Fd())
         } else {
             println("Cannot connected to", meepodb.SERVERS[i])
         }

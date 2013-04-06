@@ -33,7 +33,7 @@ var SERVERS = [...]string {
     "192.168.3.139:6631",
 }
 
-const DB_DIR string = "/home/wiza/data"
+const DB_DIR string = "/home/wiza/data/meepodb"
 
 var REPLICA bool = false
 
@@ -51,7 +51,7 @@ const (
     MAX_RECORDS uint64 = 1 << 12
     BLX_BUF_SIZE int64 = int64(1) << 20 * 16
 
-    MAX_CONNS      int = 10000
+    MAX_CONNS      int = 1000
     MAX_TABLES     int = 10000
     REPLICA_FACTOR int = 3
 )

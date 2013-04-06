@@ -72,3 +72,7 @@ func (loop *GpollLoop) AddEvent() bool {
     ev := EpollEvent{ Events: EPOLLIN|(EPOLLET & 0xFFFFFFFF), Fd: int32(fd) }
     return GpollAdd(loop.State, &ev)
 }
+
+func (loop *GpollLoop) DelEvent(ev *EpollEvent) bool {
+    return GpollDel(loop.State, ev)
+}

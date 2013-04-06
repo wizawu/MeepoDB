@@ -27,6 +27,7 @@ import (
     "flag"
     "hash/fnv"
     "net"
+    "os"
     "sort"
     "strconv"
     "strings"
@@ -57,10 +58,12 @@ func main() {
         return
     }
     var ok bool = false
+    var self string
     for _, addr := range addrs {
         s := strings.Split(addr.String(), "/")[0] + ":" + flag.Arg(0)
         for _, svr := range meepodb.SERVERS {
             if s == svr {
+                self = svr
                 ok = true
                 println("Hi, MeepoDB on", svr)
             }
@@ -101,17 +104,20 @@ func main() {
         Close(fd)
     }
     /* If database exists... */
-    fd, err := Open(dir + "/tag", O_RDONLY, S_IREAD)
+    var perm = uint32(meepodb.S_IRALL | meepodb.S_IWALL)
+    fd, err := Open(dir + "/tag", O_RDWR, perm)
     var buffer = make([]byte, 8)
     n, err := Read(fd, buffer)
     if err != nil || n != 8 {
         panic(err)
     }
-    Close(fd)
     var oldtag = meepodb.BytesToUint64(buffer)
     if oldtag != meepodb.CLUSTER_TAG {
         println("Reallocating...")
         meepodb.Reallocate(port)
     }
-    meepodb.StartServer(port)
+    Seek(fd, 0, os.SEEK_SET)
+    Write(fd, buffer)
+    Close(fd)
+    meepodb.StartServer(self)
 }
