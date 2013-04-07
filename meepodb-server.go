@@ -105,10 +105,15 @@ func main() {
     }
     /* If database exists... */
     fd, err := Open(dir + "/tag", O_RDWR, perm)
+    if err != nil {
+        println("Cannot open tag")
+        return
+    }
     var buffer = make([]byte, 8)
     n, err := Read(fd, buffer)
     if err != nil || n != 8 {
         println("Cannot read tag")
+        Close(fd)
         return
     }
     var oldtag = meepodb.BytesToUint64(buffer)
@@ -117,7 +122,12 @@ func main() {
         println("Reallocating...")
         meepodb.Reallocate(self)
         Seek(fd, 0, os.SEEK_SET)
-        Write(fd, meepodb.Uint64ToBytes(meepodb.CLUSTER_TAG))
+        n, err = Write(fd, meepodb.Uint64ToBytes(meepodb.CLUSTER_TAG))
+        if err != nil || n != 8 {
+            println("Cannot update tag")
+            Close(fd)
+            return
+        }
     }
     Close(fd)
     meepodb.StartServer(self)

@@ -47,6 +47,7 @@ func GpollListen(addr string, maxConns int) (*GpollLoop, bool) {
         return nil, false
     }
     fd := int32(file.Fd())
+    listen.Close()
 
     state, ok := GpollCreate(maxConns + 1024)
     if !ok {
