@@ -46,7 +46,6 @@ func GpollListen(addr string, maxConns int) (*GpollLoop, bool) {
     if err != nil {
         return nil, false
     }
-    listen.Close()
     fd := int32(file.Fd())
 
     state, ok := GpollCreate(maxConns + 1024)
@@ -65,23 +64,23 @@ func (loop *GpollLoop) Wait() {
     loop.Ready = GpollWait(loop.State)
 }
 
-func (loop *GpollLoop) AddEvent() bool {
+func (loop *GpollLoop) AddEvent() {
     fd, _, err := Accept(int(loop.Lfd))
-    if fd < 0 || err != nil {
-        Close(fd)
-        return false
+    if fd < 0 {
+        return
     }
     err = SetNonblock(fd, true)
     if err != nil {
         Close(fd)
-        return false
+        return
     }
-    ev := EpollEvent{ Events: EPOLLIN|(EPOLLET & 0xFFFFFFFF), Fd: int32(fd) }
-    if GpollAdd(loop.State, &ev) == true {
-        return true
+    ev := EpollEvent {
+        Events: EPOLLIN|(EPOLLET & 0xFFFFFFFF),
+        Fd: int32(fd),
     }
-    Close(fd)
-    return false
+    if GpollAdd(loop.State, &ev) == false {
+        Close(fd)
+    }
 }
 
 func (loop *GpollLoop) DelEvent(ev *EpollEvent) bool {

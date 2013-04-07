@@ -27,6 +27,7 @@ import (
 )
 
 var CLUSTER_TAG uint64
+var buffer = make([]byte, 8 + MAX_TABLE_NAME_LEN + MAX_KEY_LEN + MAX_VALUE_LEN)
 
 func SetKeepAlive(sockfd int) error {
     return SetsockoptInt(sockfd, SOL_SOCKET, SO_KEEPALIVE, 1)
@@ -55,15 +56,12 @@ func StartServer(addr string) {
         }
         for i, ev := range gpoll.State.Events[:gpoll.Ready] {
             if ev.Fd == gpoll.Lfd {
-                ok = gpoll.AddEvent()
-                if !ok {
-                    println("Gpoll.AddEvent failed.")
-                    return
-                }
+                gpoll.AddEvent()
             } else {
                 var sockfd = int(ev.Fd)
                 code, tab, k, v := readRequest(sockfd)
                 if code == ERR_CODE {
+                    println("Unknown request")
                     continue
                 }
                 switch code {
@@ -96,9 +94,8 @@ func StartServer(addr string) {
                         }
                     case QUIT_CODE:
                         gpoll.DelEvent(&gpoll.State.Events[i])
+                        Close(sockfd)
                         println("Client", sockfd, "quit")
-                    default:
-                        println("Unknown request")
                 }
             }
         }
@@ -106,40 +103,34 @@ func StartServer(addr string) {
 }
 
 func readRequest(sockfd int) (byte, []byte, []byte, []byte) {
-    var head = make([]byte, 8)
-    n, err := Read(sockfd, head)
-    if err != nil || n != 8 {
+    n, err := Read(sockfd, buffer)
+    if err != nil || n < 8 {
         return ERR_CODE, nil, nil, nil
     }
-    code, tlen, klen, vlen := DecodeHead(head)
+    code, tlen, klen, vlen := DecodeHead(buffer[:8])
+    body := buffer[8 : n]
     switch code {
         case GET_CODE:
-            buffer := receiveN(sockfd, tlen + klen)
-            if buffer != nil {
-                return GET_CODE, buffer[:tlen], buffer[tlen:], nil
+            if n != int(8 + tlen + klen) {
+                return ERR_CODE, nil, nil, nil
             }
+            return GET_CODE, body[:tlen], body[tlen:], nil
         case SET_CODE:
-            buffer := receiveN(sockfd, tlen + klen + vlen)
-            if buffer != nil {
-                return SET_CODE, buffer[:tlen], buffer[tlen : tlen + klen],
-                       buffer[tlen + klen :]
+            if n != int(8 + tlen + klen + vlen) {
+                return ERR_CODE, nil, nil, nil
             }
+            return SET_CODE, body[:tlen], body[tlen : tlen + klen],
+                   body[tlen + klen :]
         case DROP_CODE:
-            buffer := receiveN(sockfd, tlen)
-            if buffer != nil {
-                return DROP_CODE, buffer, nil, nil
+            if n != int(8 + tlen) {
+                return ERR_CODE, nil, nil, nil
             }
+            return DROP_CODE, body, nil, nil
         case QUIT_CODE:
+            if n != 8 {
+                return ERR_CODE, nil, nil, nil
+            }
             return QUIT_CODE, nil, nil, nil
     }
     return ERR_CODE, nil, nil, nil
-}
-
-func receiveN(sockfd int, n uint64) []byte {
-    var buffer = make([]byte, n)
-    m, err := Read(sockfd, buffer)
-    if err != nil || m != int(n) {
-        return nil
-    }
-    return buffer
 }

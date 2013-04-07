@@ -108,7 +108,7 @@ func main() {
     var buffer = make([]byte, 8)
     n, err := Read(fd, buffer)
     if err != nil || n != 8 {
-        println("Cannot update tag")
+        println("Cannot read tag")
         return
     }
     var oldtag = meepodb.BytesToUint64(buffer)
@@ -117,7 +117,7 @@ func main() {
         println("Reallocating...")
         meepodb.Reallocate(self)
         Seek(fd, 0, os.SEEK_SET)
-        Write(fd, buffer)
+        Write(fd, meepodb.Uint64ToBytes(meepodb.CLUSTER_TAG))
     }
     Close(fd)
     meepodb.StartServer(self)
