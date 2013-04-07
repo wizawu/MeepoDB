@@ -27,7 +27,7 @@ import (
     "strconv"
 )
 
-func Reallocate(port int) {
+func Reallocate(addr string) {
 }
 
 func HashTableKey(table, key []byte) uint64 {

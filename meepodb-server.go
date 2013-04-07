@@ -46,7 +46,7 @@ func main() {
         help()
         return
     }
-    port, err := strconv.Atoi(flag.Arg(0))
+    _, err := strconv.Atoi(flag.Arg(0))
     if err != nil {
         help()
         return
@@ -57,19 +57,17 @@ func main() {
         println("Check network interfaces.")
         return
     }
-    var ok bool = false
     var self string
     for _, addr := range addrs {
         s := strings.Split(addr.String(), "/")[0] + ":" + flag.Arg(0)
         for _, svr := range meepodb.SERVERS {
             if s == svr {
                 self = svr
-                ok = true
-                println("Hi, MeepoDB on", svr)
+                println("Hi, MeepoDB on", self)
             }
         }
     }
-    if !ok {
+    if len(self) == 0 {
         println("Your address is not one of the servers.")
         return
     }
@@ -85,13 +83,14 @@ func main() {
     var dir string = meepodb.DB_DIR
     err = Chdir(dir)
     /* If database does not exist... */
+    var perm = uint32(meepodb.S_IRALL | meepodb.S_IWALL)
     if err != nil {
         err = Mkdir(dir, meepodb.S_IRWXA)
         if err != nil {
             println("Cannot mkdir:", dir)
             return
         }
-        var perm = uint32(meepodb.S_IRALL | meepodb.S_IWALL)
+        /* Create tag */
         fd, err := Open(dir + "/tag", O_RDWR | O_CREAT, perm)
         if err != nil {
             println("Cannot create tag in", dir)
@@ -99,25 +98,27 @@ func main() {
         }
         n, err := Write(fd, meepodb.Uint64ToBytes(meepodb.CLUSTER_TAG))
         if err != nil || n != 8 {
-            panic(err)
+            println("Cannot write tag")
+            return
         }
         Close(fd)
     }
     /* If database exists... */
-    var perm = uint32(meepodb.S_IRALL | meepodb.S_IWALL)
     fd, err := Open(dir + "/tag", O_RDWR, perm)
     var buffer = make([]byte, 8)
     n, err := Read(fd, buffer)
     if err != nil || n != 8 {
-        panic(err)
+        println("Cannot update tag")
+        return
     }
     var oldtag = meepodb.BytesToUint64(buffer)
+    /* If SERVERS in config.go changes... */
     if oldtag != meepodb.CLUSTER_TAG {
         println("Reallocating...")
-        meepodb.Reallocate(port)
+        meepodb.Reallocate(self)
+        Seek(fd, 0, os.SEEK_SET)
+        Write(fd, buffer)
     }
-    Seek(fd, 0, os.SEEK_SET)
-    Write(fd, buffer)
     Close(fd)
     meepodb.StartServer(self)
 }

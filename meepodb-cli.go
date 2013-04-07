@@ -68,6 +68,19 @@ func ReadTokensInLine() []([]byte) {
 }
 
 func sendRequest(i uint64, request []byte) bool {
+    if servers[i] == -1 {
+        /* Try dailing again */
+        addr, err := net.ResolveTCPAddr("tcp", meepodb.SERVERS[i])
+        conn, err := net.DialTCP("tcp", nil, addr)
+        if err != nil {
+            println("* Failed on", meepodb.SERVERS[i])
+            return false
+        }
+        conn.SetKeepAlive(true)
+        conn.SetNoDelay(true)
+        file, _ := conn.File()
+        servers[i] = int(file.Fd())
+    }
     n, err := Write(servers[i], request)
     if err != nil || n != len(request) {
         println("* Failed on", meepodb.SERVERS[i])
@@ -76,7 +89,7 @@ func sendRequest(i uint64, request []byte) bool {
     return true
 }
 
-func readGetResult(i uint64, request []byte) ([]byte, bool) {
+func getFrom(i uint64, request []byte) ([]byte, bool) {
     var ok bool = sendRequest(i, request)
     if !ok {
         return nil, false
@@ -110,19 +123,19 @@ func get(table, key []byte) {
     i = i % numberOfServers
     var i2 = (i + 1) % numberOfServers
     var i3 = (i + 2) % numberOfServers
-    v1, ok = readGetResult(i, request)
+    v1, ok = getFrom(i, request)
     if ok {
         /* If v1 ok... */
         if meepodb.REPLICA == false {
             fmt.Printf("%s\n", v1)
         } else {
-            v2, ok = readGetResult(i2, request)
+            v2, ok = getFrom(i2, request)
             if ok {
                 /* If v1 == v2... */
                 if bytes.Compare(v1, v2) == 0 {
                     fmt.Printf("%s\n", v1)
                 } else {
-                    v3, ok = readGetResult(i3, request)
+                    v3, ok = getFrom(i3, request)
                     if ok {
                         if bytes.Compare(v1, v3) == 0 || bytes.Compare(v2, v3) == 0 {
                             fmt.Printf("%s\n", v3)
@@ -145,13 +158,13 @@ func get(table, key []byte) {
         /* If v1 not ok... */
         println("* Failed on", meepodb.SERVERS[i])
         if meepodb.REPLICA {
-            v2, ok = readGetResult(i2, request)
+            v2, ok = getFrom(i2, request)
             if ok {
                 /* If v2 ok... */
                 fmt.Printf("%s\n", v2)
             } else {
                 println("* Failed on", meepodb.SERVERS[i2])
-                v3, ok = readGetResult(i3, request)
+                v3, ok = getFrom(i3, request)
                 if ok {
                     /* If v3 ok... */
                     fmt.Printf("%s\n", v3)
@@ -190,8 +203,10 @@ func drop(table []byte) {
 func quit() {
     var request []byte = meepodb.EncodeSym(meepodb.QUIT_CODE)
     for _, fd := range servers {
-        Write(fd, request)
-        Close(fd)
+        if fd != - 1{
+            Write(fd, request)
+            Close(fd)
+        }
     }
 }
 
@@ -209,12 +224,16 @@ func main() {
             println("Connected to", meepodb.SERVERS[i])
             conn.SetKeepAlive(true)
             conn.SetNoDelay(true)
+            defer conn.Close()
             file, _ := conn.File()
             servers[i] = int(file.Fd())
         } else {
             println("Cannot connected to", meepodb.SERVERS[i])
+            /* Set server socket to -1 if connection fails */
+            servers[i] = -1
         }
     }
+    /* Start shell */
     println("\nMeepoDB Shell")
     for {
         print(lineNumber, "> ")
