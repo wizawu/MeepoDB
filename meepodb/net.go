@@ -34,6 +34,7 @@ func StartServer(addr string) {
         println("GpollListen on", addr, "failed.")
         return
     }
+    var strg = NewStorage()
     for {
         gpoll.Wait()
         if gpoll.Ready == -1 {
@@ -55,15 +56,36 @@ func StartServer(addr string) {
                 }
                 switch code {
                     case GET_CODE:
-                        println("GET", string(tab), string(k))
+                        v = strg.Get(tab, k)
+                        head := EncodeHead(OK_CODE, 0, 0, uint64(len(v)))
+                        n, err := Write(sockfd, head)
+                        if err != nil || n != 8 {
+                            println("Cannot reply", sockfd)
+                            continue
+                        }
+                        if len(v) != 0 {
+                            n, err = Write(sockfd, v)
+                            if err != nil || n != len(v) {
+                                println("Cannot reply", sockfd)
+                            }
+                        }
                     case SET_CODE:
-                        println("SET", string(tab), string(k), string(v))
+                        var ok bool = strg.Set(tab, k, v)
+                        if !ok {
+                            /* Value is always long, so do not print it */
+                            println("Cannot set", string(tab), string(k))
+                        }
                     case DROP_CODE:
-                        println("DROP", string(tab))
+                        var ok bool = strg.Drop(tab)
+                        if ok {
+                            println("Drop", string(tab))
+                        } else {
+                            println("Cannot drop", string(tab))
+                        }
                     case QUIT_CODE:
                         gpoll.DelEvent(&gpoll.State.Events[i])
                         Close(sockfd)
-                        println("QUIT")
+                        println("Close sockfd", sockfd)
                     default:
                         println("Unknown request")
                 }

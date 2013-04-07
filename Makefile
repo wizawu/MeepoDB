@@ -5,7 +5,7 @@ dbsrc = meepodb/blocks.go meepodb/cola.go meepodb/config.go \
 		meepodb/net.go meepodb/proto.go meepodb/realloc.go \
 		meepodb/storage.go
 
-bin: meepodb-cli meepodb-server
+bin = meepodb-cli meepodb-server
 
 all: $(bin)
 

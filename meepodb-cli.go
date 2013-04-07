@@ -89,6 +89,14 @@ func sendRequest(i uint64, request []byte) bool {
     return true
 }
 
+func nonvoidPrint(str []byte) {
+    if len(str) == 0 {
+        fmt.Println("<nil>")
+        return
+    }
+    fmt.Printf("%s\n", str)
+}
+
 func getFrom(i uint64, request []byte) ([]byte, bool) {
     var ok bool = sendRequest(i, request)
     if !ok {
@@ -127,31 +135,31 @@ func get(table, key []byte) {
     if ok {
         /* If v1 ok... */
         if meepodb.REPLICA == false {
-            fmt.Printf("%s\n", v1)
+            nonvoidPrint(v1)
         } else {
             v2, ok = getFrom(i2, request)
             if ok {
                 /* If v1 == v2... */
                 if bytes.Compare(v1, v2) == 0 {
-                    fmt.Printf("%s\n", v1)
+                    nonvoidPrint(v1)
                 } else {
                     v3, ok = getFrom(i3, request)
                     if ok {
                         if bytes.Compare(v1, v3) == 0 || bytes.Compare(v2, v3) == 0 {
-                            fmt.Printf("%s\n", v3)
+                            nonvoidPrint(v3)
                         } else {
-                            fmt.Printf("%s\n", v1)
+                            nonvoidPrint(v1)
                         }
                     } else {
                         /* If v3 not ok... */
                         println("* Failed on", meepodb.SERVERS[i3])
-                        fmt.Printf("%s\n", v1)
+                        nonvoidPrint(v1)
                     }
                 }
             } else {
                 /* If v2 not ok... */
                 println("* Failed on", meepodb.SERVERS[i2])
-                fmt.Printf("%s\n", v1)
+                nonvoidPrint(v1)
             }
         }
     } else {
@@ -161,13 +169,13 @@ func get(table, key []byte) {
             v2, ok = getFrom(i2, request)
             if ok {
                 /* If v2 ok... */
-                fmt.Printf("%s\n", v2)
+                nonvoidPrint(v2)
             } else {
                 println("* Failed on", meepodb.SERVERS[i2])
                 v3, ok = getFrom(i3, request)
                 if ok {
                     /* If v3 ok... */
-                    fmt.Printf("%s\n", v3)
+                    nonvoidPrint(v3)
                 } else {
                     println("* Failed on", meepodb.SERVERS[i3])
                 }
