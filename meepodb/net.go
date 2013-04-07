@@ -28,6 +28,18 @@ import (
 
 var CLUSTER_TAG uint64
 
+func SetKeepAlive(sockfd int) error {
+    return SetsockoptInt(sockfd, SOL_SOCKET, SO_KEEPALIVE, 1)
+}
+
+func SetNoDelay(sockfd int) error {
+    return SetsockoptInt(sockfd, IPPROTO_TCP, TCP_NODELAY, 1)
+}
+
+func SetLinger(sockfd int, sec int) error {
+    return SetsockoptInt(sockfd, SOL_SOCKET, SO_LINGER, sec)
+}
+
 func StartServer(addr string) {
     gpoll, ok := GpollListen(addr, MAX_CONNS)
     if !ok {
@@ -84,8 +96,7 @@ func StartServer(addr string) {
                         }
                     case QUIT_CODE:
                         gpoll.DelEvent(&gpoll.State.Events[i])
-                        Close(sockfd)
-                        println("Close sockfd", sockfd)
+                        println("Client", sockfd, "quit")
                     default:
                         println("Unknown request")
                 }

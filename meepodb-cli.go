@@ -69,17 +69,18 @@ func ReadTokensInLine() []([]byte) {
 
 func sendRequest(i uint64, request []byte) bool {
     if servers[i] == -1 {
-        /* Try dailing again */
+        /* Try dialing again */
+        println("Dialing", meepodb.SERVERS[i], "\b...")
         addr, err := net.ResolveTCPAddr("tcp", meepodb.SERVERS[i])
         conn, err := net.DialTCP("tcp", nil, addr)
         if err != nil {
             println("* Failed on", meepodb.SERVERS[i])
             return false
         }
-        conn.SetKeepAlive(true)
-        conn.SetNoDelay(true)
         file, _ := conn.File()
+        conn.Close()
         servers[i] = int(file.Fd())
+        meepodb.SetKeepAlive(servers[i])
     }
     n, err := Write(servers[i], request)
     if err != nil || n != len(request) {
@@ -211,7 +212,7 @@ func drop(table []byte) {
 func quit() {
     var request []byte = meepodb.EncodeSym(meepodb.QUIT_CODE)
     for _, fd := range servers {
-        if fd != - 1{
+        if fd != - 1 {
             Write(fd, request)
             Close(fd)
         }
@@ -224,19 +225,19 @@ func main() {
     if meepodb.REPLICA && numberOfServers < 3 {
         meepodb.REPLICA = false
     }
+    println("Replica:", meepodb.REPLICA)
     /* Connect to servers */
     for i, _ := range servers {
         addr, err := net.ResolveTCPAddr("tcp", meepodb.SERVERS[i])
         conn, err := net.DialTCP("tcp", nil, addr)
         if err == nil {
             println("Connected to", meepodb.SERVERS[i])
-            conn.SetKeepAlive(true)
-            conn.SetNoDelay(true)
-            defer conn.Close()
             file, _ := conn.File()
+            conn.Close()
             servers[i] = int(file.Fd())
+            meepodb.SetKeepAlive(servers[i])
         } else {
-            println("Cannot connected to", meepodb.SERVERS[i])
+            fmt.Println(err)
             /* Set server socket to -1 if connection fails */
             servers[i] = -1
         }

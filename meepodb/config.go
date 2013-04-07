@@ -51,7 +51,7 @@ const (
     MAX_RECORDS uint64 = 1 << 12
     BLX_BUF_SIZE int64 = int64(1) << 20 * 16
 
-    MAX_CONNS      int = 1000
+    MAX_CONNS      int = 10000
     MAX_TABLES     int = 10000
     REPLICA_FACTOR int = 3
 )
