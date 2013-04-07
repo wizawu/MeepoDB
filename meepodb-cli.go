@@ -127,7 +127,7 @@ func get(table, key []byte) {
     var v1, v2, v3 []byte
     var request []byte = meepodb.EncodeGet(table, key)
     var i uint64 = meepodb.HashTableKey(table, key)
-    println("Hash location:", i)
+    println("* Hash location:", i)
     i = i % numberOfServers
     var i2 = (i + 1) % numberOfServers
     var i3 = (i + 2) % numberOfServers
@@ -187,7 +187,7 @@ func get(table, key []byte) {
 func set(table, key, value []byte) {
     var request []byte = meepodb.EncodeSet(table, key, value)
     var i uint64 = meepodb.HashTableKey(table, key)
-    println("Hash location:", i)
+    println("* Hash location:", i)
     i = i % numberOfServers
     sendRequest(i, request)
     if meepodb.REPLICA == false {
