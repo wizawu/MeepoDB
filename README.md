@@ -8,9 +8,9 @@ MeepoDB
 + Basic operations: GET, SET, DEL, DROP
 
 ### Limitations
-+ No optimization for sequential reads and writes
++ Performance of sequential reads and writes is the same as random
 + No compression for keys and values
-+ 128 B table name, 1 MiB key, 1 GiB value at most 
++ 128 B table name, 1 MiB single key, 1 GiB single value at most 
 
 ### Try It
 <pre><code>$ cd path/to/meepodb
