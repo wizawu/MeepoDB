@@ -70,11 +70,11 @@ func ReadTokensInLine() []([]byte) {
 func sendRequest(i uint64, request []byte) bool {
     if servers[i] == -1 {
         /* Try dialing again */
-        println("Dialing", meepodb.SERVERS[i], "\b...")
+        println("* Dialing", meepodb.SERVERS[i], "\b...")
         addr, err := net.ResolveTCPAddr("tcp", meepodb.SERVERS[i])
         conn, err := net.DialTCP("tcp", nil, addr)
         if err != nil {
-            println("* Failed on", meepodb.SERVERS[i])
+            fmt.Println("*", err)
             return false
         }
         file, _ := conn.File()
@@ -84,7 +84,9 @@ func sendRequest(i uint64, request []byte) bool {
     }
     n, err := Write(servers[i], request)
     if err != nil || n != len(request) {
-        println("* Failed on", meepodb.SERVERS[i])
+        println("* Cannot send request to", meepodb.SERVERS[i])
+        /* Reset the connection */
+        servers[i] = -1
         return false
     }
     return true
@@ -153,32 +155,32 @@ func get(table, key []byte) {
                         }
                     } else {
                         /* If v3 not ok... */
-                        println("* Failed on", meepodb.SERVERS[i3])
+                        println("* Cannot GET from", meepodb.SERVERS[i3])
                         nonvoidPrint(v1)
                     }
                 }
             } else {
                 /* If v2 not ok... */
-                println("* Failed on", meepodb.SERVERS[i2])
+                println("* Cannot GET from", meepodb.SERVERS[i2])
                 nonvoidPrint(v1)
             }
         }
     } else {
         /* If v1 not ok... */
-        println("* Failed on", meepodb.SERVERS[i])
+        println("* Cannot GET from", meepodb.SERVERS[i])
         if meepodb.REPLICA {
             v2, ok = getFrom(i2, request)
             if ok {
                 /* If v2 ok... */
                 nonvoidPrint(v2)
             } else {
-                println("* Failed on", meepodb.SERVERS[i2])
+                println("* Cannot GET from", meepodb.SERVERS[i2])
                 v3, ok = getFrom(i3, request)
                 if ok {
                     /* If v3 ok... */
                     nonvoidPrint(v3)
                 } else {
-                    println("* Failed on", meepodb.SERVERS[i3])
+                    println("* Cannot GET from", meepodb.SERVERS[i3])
                 }
             }
         }
