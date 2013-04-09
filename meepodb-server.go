@@ -25,6 +25,7 @@ package main
 
 import (
     "flag"
+    "fmt"
     "hash/fnv"
     "net"
     "os"
@@ -78,27 +79,28 @@ func main() {
         hash.Write([]byte(s + "&"))
     }
     meepodb.CLUSTER_TAG = hash.Sum64()
-    println("Cluster tag:", meepodb.CLUSTER_TAG)
+    println("cluster tag:", meepodb.CLUSTER_TAG)
 
     var dir string = meepodb.DB_DIR
+    println("db dir:", dir)
     err = Chdir(dir)
     /* If database does not exist... */
     var perm = uint32(meepodb.S_IRALL | meepodb.S_IWALL)
     if err != nil {
         err = Mkdir(dir, meepodb.S_IRWXA)
         if err != nil {
-            println("Cannot mkdir:", dir)
+            fmt.Println("mkdir:", err)
             return
         }
         /* Create tag */
         fd, err := Open(dir + "/tag", O_RDWR | O_CREAT, perm)
         if err != nil {
-            println("Cannot create tag in", dir)
+            fmt.Println("create tag:", err)
             return
         }
         n, err := Write(fd, meepodb.Uint64ToBytes(meepodb.CLUSTER_TAG))
         if err != nil || n != 8 {
-            println("Cannot write tag")
+            fmt.Println("write tag:", err)
             return
         }
         Close(fd)
@@ -106,25 +108,25 @@ func main() {
     /* If database exists... */
     fd, err := Open(dir + "/tag", O_RDWR, perm)
     if err != nil {
-        println("Cannot open tag")
+        fmt.Println("open tag:", err)
         return
     }
     var buffer = make([]byte, 8)
     n, err := Read(fd, buffer)
     if err != nil || n != 8 {
-        println("Cannot read tag")
+        fmt.Println("read tag:", err)
         Close(fd)
         return
     }
     var oldtag = meepodb.BytesToUint64(buffer)
     /* If SERVERS in config.go changes... */
     if oldtag != meepodb.CLUSTER_TAG {
-        println("Reallocating...")
+        println("reallocating...")
         meepodb.Reallocate(self)
         Seek(fd, 0, os.SEEK_SET)
         n, err = Write(fd, meepodb.Uint64ToBytes(meepodb.CLUSTER_TAG))
         if err != nil || n != 8 {
-            println("Cannot update tag")
+            println("update tag:", err)
             Close(fd)
             return
         }

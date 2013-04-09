@@ -68,28 +68,34 @@ func ReadTokensInLine() []([]byte) {
 }
 
 func sendRequest(i uint64, request []byte) bool {
-    if servers[i] == -1 {
-        /* Try dialing again */
-        println("* Dialing", meepodb.SERVERS[i], "\b...")
-        addr, err := net.ResolveTCPAddr("tcp", meepodb.SERVERS[i])
-        conn, err := net.DialTCP("tcp", nil, addr)
-        if err != nil {
-            fmt.Println("*", err)
-            return false
+    if servers[i] != -1 {
+        n, err := Write(servers[i], request)
+        if err == nil && n == len(request) {
+            return true
         }
-        file, _ := conn.File()
-        conn.Close()
-        servers[i] = int(file.Fd())
-        meepodb.SetKeepAlive(servers[i])
-    }
-    n, err := Write(servers[i], request)
-    if err != nil || n != len(request) {
-        println("* Cannot send request to", meepodb.SERVERS[i])
+        fmt.Println("* cannot send request to", meepodb.SERVERS[i], "\b:", err)
         /* Reset the connection */
         servers[i] = -1
+    }
+    /* Try dialing again */
+    println("* dialing", meepodb.SERVERS[i], "\b...")
+    addr, err := net.ResolveTCPAddr("tcp", meepodb.SERVERS[i])
+    conn, err := net.DialTCP("tcp", nil, addr)
+    if err != nil {
+        fmt.Println("*", err)
         return false
     }
-    return true
+    file, _ := conn.File()
+    conn.Close()
+    servers[i] = int(file.Fd())
+    meepodb.SetKeepAlive(servers[i], 0)
+    n, err := Write(servers[i], request)
+    if err == nil && n == len(request) {
+        return true
+    }
+    fmt.Println("* cannot send request to", meepodb.SERVERS[i], "\b:", err)
+    servers[i] = -1
+    return false
 }
 
 func nonvoidPrint(str []byte) {
@@ -130,7 +136,7 @@ func get(table, key []byte) {
     var v1, v2, v3 []byte
     var request []byte = meepodb.EncodeGet(table, key)
     var i uint64 = meepodb.HashTableKey(table, key)
-    println("* Hash location:", i)
+    println("* hash location:", i)
     i = i % numberOfServers
     var i2 = (i + 1) % numberOfServers
     var i3 = (i + 2) % numberOfServers
@@ -155,32 +161,32 @@ func get(table, key []byte) {
                         }
                     } else {
                         /* If v3 not ok... */
-                        println("* Cannot GET from", meepodb.SERVERS[i3])
+                        println("* cannot GET from", meepodb.SERVERS[i3])
                         nonvoidPrint(v1)
                     }
                 }
             } else {
                 /* If v2 not ok... */
-                println("* Cannot GET from", meepodb.SERVERS[i2])
+                println("* cannot GET from", meepodb.SERVERS[i2])
                 nonvoidPrint(v1)
             }
         }
     } else {
         /* If v1 not ok... */
-        println("* Cannot GET from", meepodb.SERVERS[i])
+        println("* cannot GET from", meepodb.SERVERS[i])
         if meepodb.REPLICA {
             v2, ok = getFrom(i2, request)
             if ok {
                 /* If v2 ok... */
                 nonvoidPrint(v2)
             } else {
-                println("* Cannot GET from", meepodb.SERVERS[i2])
+                println("* cannot GET from", meepodb.SERVERS[i2])
                 v3, ok = getFrom(i3, request)
                 if ok {
                     /* If v3 ok... */
                     nonvoidPrint(v3)
                 } else {
-                    println("* Cannot GET from", meepodb.SERVERS[i3])
+                    println("* cannot GET from", meepodb.SERVERS[i3])
                 }
             }
         }
@@ -190,7 +196,7 @@ func get(table, key []byte) {
 func set(table, key, value []byte) {
     var request []byte = meepodb.EncodeSet(table, key, value)
     var i uint64 = meepodb.HashTableKey(table, key)
-    println("* Hash location:", i)
+    println("* hash location:", i)
     i = i % numberOfServers
     sendRequest(i, request)
     if meepodb.REPLICA == false {
@@ -227,17 +233,17 @@ func main() {
     if meepodb.REPLICA && numberOfServers < 3 {
         meepodb.REPLICA = false
     }
-    println("Replica:", meepodb.REPLICA)
+    println("replica:", meepodb.REPLICA)
     /* Connect to servers */
     for i, _ := range servers {
         addr, err := net.ResolveTCPAddr("tcp", meepodb.SERVERS[i])
         conn, err := net.DialTCP("tcp", nil, addr)
         if err == nil {
-            println("Connected to", meepodb.SERVERS[i])
+            println("connected to", meepodb.SERVERS[i])
             file, _ := conn.File()
             conn.Close()
             servers[i] = int(file.Fd())
-            meepodb.SetKeepAlive(servers[i])
+            meepodb.SetKeepAlive(servers[i], 0)
         } else {
             fmt.Println(err)
             /* Set server socket to -1 if connection fails */
@@ -286,7 +292,7 @@ func main() {
                     continue
                 }
             default:
-                println("*", "Unknown command")
+                println("*", "unknown command")
                 continue
         }
         /* Send command */

@@ -32,11 +32,12 @@ import (
 var SERVERS = [...]string {
     "192.168.3.139:6631",
     "192.168.3.139:6632",
+    "192.168.3.139:6633",
 }
 
-const DB_DIR string = "/tmp/mpdb1"
+const DB_DIR string = "/tmp/mpdb"
 
-var REPLICA bool = false
+var REPLICA bool = true
 
 /* ========================================================================= */
 

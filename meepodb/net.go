@@ -29,8 +29,8 @@ import (
 var CLUSTER_TAG uint64
 var buffer = make([]byte, 8 + MAX_TABLE_NAME_LEN + MAX_KEY_LEN + MAX_VALUE_LEN)
 
-func SetKeepAlive(sockfd int) error {
-    return SetsockoptInt(sockfd, SOL_SOCKET, SO_KEEPALIVE, 1)
+func SetKeepAlive(sockfd, v int) error {
+    return SetsockoptInt(sockfd, SOL_SOCKET, SO_KEEPALIVE, v)
 }
 
 func SetNoDelay(sockfd int) error {
@@ -61,7 +61,7 @@ func StartServer(addr string) {
                 var sockfd = int(ev.Fd)
                 code, tab, k, v := readRequest(sockfd)
                 if code == ERR_CODE {
-                    println("Unknown request")
+                    println("unknown request")
                     continue
                 }
                 switch code {
@@ -70,32 +70,32 @@ func StartServer(addr string) {
                         head := EncodeHead(OK_CODE, 0, 0, uint64(len(v)))
                         n, err := Write(sockfd, head)
                         if err != nil || n != 8 {
-                            println("Cannot reply", sockfd)
+                            println("cannot reply", sockfd)
                             continue
                         }
                         if len(v) != 0 {
                             n, err = Write(sockfd, v)
                             if err != nil || n != len(v) {
-                                println("Cannot reply", sockfd)
+                                println("cannot reply", sockfd)
                             }
                         }
                     case SET_CODE:
                         var ok bool = strg.Set(tab, k, v)
                         if !ok {
                             /* Value is always long, so do not print it */
-                            println("Cannot set", string(tab), string(k))
+                            println("cannot SET", string(tab), string(k))
                         }
                     case DROP_CODE:
                         var ok bool = strg.Drop(tab)
                         if ok {
-                            println("Drop", string(tab))
+                            println("DROP", string(tab))
                         } else {
-                            println("Cannot drop", string(tab))
+                            println("cannot DROP", string(tab))
                         }
                     case QUIT_CODE:
                         gpoll.DelEvent(&gpoll.State.Events[i])
                         Close(sockfd)
-                        println("Client", sockfd, "quit")
+                        println("client", sockfd, "QUIT")
                 }
             }
         }
