@@ -20,7 +20,7 @@ func main() {
         println("PLEASE RUN: meepodb-bench [number]")
         return
     }
-    var path = ("/tmp/mpdb_" + strconv.Itoa(int(time.Now().Unix())))
+    var path = ("/home/wiza/ssd/mpdb_" + strconv.Itoa(int(time.Now().Unix())))
     cola, _ := meepodb.NewCOLA(path)
     fmt.Printf("db dir:\t\t%s\n", path)
     v := bytes.Repeat([]byte("JAVAPYTHON"), 10)

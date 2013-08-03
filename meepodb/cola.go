@@ -101,7 +101,7 @@ func (cola *COLA) Get(key []byte) []byte {
         return value
     }
     /* Get from extents */
-    for i := 64; i > 0; i <<= 1 {
+    for i := int(MAX_RECORDS); i > 0; i <<= 1 {
         if uint64(i) & cola.Bitmap > 0 {
             j := cola.extents[log(i)].Find(key)
             if j >= 0 {
@@ -246,7 +246,7 @@ func OpenCOLA(path string) (*COLA, bool) {
         return nil, false
     }
     /* Extents */
-    for i := 64; i > 0; i <<= 1 {
+    for i := int(MAX_RECORDS); i > 0; i <<= 1 {
         if uint64(i) & cola.Bitmap > 0 {
             extpath := path + "/ext_" + strconv.Itoa(i)
             cola.extents[log(i)], ok = OpenExtent(extpath)
