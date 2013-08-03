@@ -24,7 +24,7 @@ $ ./meepodb-cli<code></code></pre>
 CPU: Intel(R) Core(TM) i5 M450 @ 2.40GHz  
 RAM: 6 GiB of DDR3 at 1067 MHz, 3 MiB of L3 cache  
 ATA Disk: KingShare SSD032GAU (32 GB)  
-File system: ext4  
+File system: F2FS  
 Key-value size: 16 bytes + 100 bytes (no compression)  
 Read/write ops: 1,000,000  
 Random reads: 199,643 ops/sec  
