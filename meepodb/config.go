@@ -31,13 +31,11 @@ import (
 
 var SERVERS = [...]string {
     "192.168.3.139:6631",
-    "192.168.3.139:6632",
-    "192.168.3.139:6633",
 }
 
-const DB_DIR string = "/tmp/mpdb"
+const DB_DIR string = "/home/wiza/mpdb"
 
-var REPLICA bool = true
+var REPLICA bool = false
 
 /* ========================================================================= */
 
